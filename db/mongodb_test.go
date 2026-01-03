@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cuducos/minha-receita/testutils"
+	"codeberg.org/cuducos/minha-receita/testutils"
 	"go.mongodb.org/mongo-driver/bson"
 )
 

@@ -9,7 +9,7 @@ Existem três formas de rodar essa aplicação localmente:
 As duas últimas alternativas necessitam do código fonte. Você pode usar o Git para baixar o código do projeto:
 
 ```console
-$ git clone https://github.com/cuducos/minha-receita.git
+$ git clone https://codeberg.org/cuducos/minha-receita.git
 ```
 
 ## Requisitos e instalação
@@ -33,7 +33,7 @@ $ git clone https://github.com/cuducos/minha-receita.git
 Baixar a imagem com:
 
 ```console
-$ docker pull ghcr.io/cuducos/minha-receita:main
+$ docker pull atcr.io/cuducos.me/minha-receita:main
 ```
 
 ### A partir do código fonte
@@ -69,8 +69,8 @@ Várias configurações podem ser passadas para a CLI, e elas estão documentada
 #### Imagem Docker
 
 ```console
-$ docker run --rm ghcr.io/cuducos/minha-receita:main --help
-$ docker run --rm ghcr.io/cuducos/minha-receita:main api --help
+$ docker run --rm atcr.io/cuducos.me/minha-receita:main --help
+$ docker run --rm atcr.io/cuducos.me/minha-receita:main api --help
 ```
 
 #### A partir do código fonte

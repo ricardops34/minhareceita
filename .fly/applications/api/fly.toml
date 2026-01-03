@@ -2,7 +2,7 @@ app = 'minha-receita-api'
 primary_region = 'ams'
 
 [build]
-  image = 'ghcr.io/cuducos/minha-receita:main'
+  image = 'atcr.io/cuducos.me/minha-receita:main'
 
 [env]
   PORT = '8888'

@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/cuducos/minha-receita/cmd"
+	"codeberg.org/cuducos/minha-receita/cmd"
 )
 
 func main() {

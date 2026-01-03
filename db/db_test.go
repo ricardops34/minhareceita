@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/cuducos/minha-receita/transform"
+	"codeberg.org/cuducos/minha-receita/transform"
 )
 
 type database interface {

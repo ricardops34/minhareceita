@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"codeberg.org/cuducos/minha-receita/db"
 	"github.com/cuducos/go-cnpj"
-	"github.com/cuducos/minha-receita/db"
 )
 
 type mockDatabase struct{}

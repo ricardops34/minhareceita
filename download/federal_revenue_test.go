@@ -1,7 +1,7 @@
 package download
 
 import (
-	"github.com/cuducos/minha-receita/testutils"
+	"codeberg.org/cuducos/minha-receita/testutils"
 	"testing"
 )
 

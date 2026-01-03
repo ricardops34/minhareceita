@@ -1,0 +1,12 @@
+when:
+  - event: pull_request
+  - event: push
+    branch: main
+
+steps:
+  format:
+    image: golang:1.25-trixie
+    environment:
+      GOEXPERIMENT: jsonv2
+    commands:
+      - if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then exit 1; fi

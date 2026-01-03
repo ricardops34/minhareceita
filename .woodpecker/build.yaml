@@ -1,0 +1,23 @@
+depends_on:
+  - format
+  - lint
+  - tests
+
+when:
+  - event: push
+    branch: main
+
+steps:
+  build:
+    image: woodpeckerci/plugin-kaniko
+    settings:
+      registry: atcr.io
+      repo: cuducos.me/minha-receita
+      tags:
+        - ${CI_COMMIT_SHA}
+        - latest
+      cache: true
+      username:
+        from_secret: CONTAINER_REGISTRY_USERNAME
+      password:
+        from_secret: CONTAINER_REGISTRY_PASSWORD

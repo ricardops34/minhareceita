@@ -12,7 +12,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/cuducos/minha-receita/transform"
+	"codeberg.org/cuducos/minha-receita/transform"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"

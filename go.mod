@@ -1,4 +1,4 @@
-module github.com/cuducos/minha-receita
+module codeberg.org/cuducos/minha-receita
 
 go 1.25.0
 

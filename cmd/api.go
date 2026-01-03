@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cuducos/minha-receita/api"
+	"codeberg.org/cuducos/minha-receita/api"
 	"github.com/spf13/cobra"
 )
 

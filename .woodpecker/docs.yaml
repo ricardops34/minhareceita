@@ -1,0 +1,23 @@
+depends_on:
+  - build
+
+when:
+  - event: push
+    branch: main
+
+steps:
+  build:
+    image: squidfunk/mkdocs-material
+    commands: cd docs && mkdocs build
+  deploy:
+    image: amazon/aws-cli
+    environment:
+      AWS_REGION:
+        from_secret: AWS_REGION
+      AWS_ACCESS_KEY_ID:
+        from_secret: AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: AWS_SECRET_ACCESS_KEY
+      ENDPOINT_URL:
+         from_secret: ENDPOINT_URL
+    commands: cd docs/site && aws s3 sync --endpoint-url ${ENDPOINT_URL} --delete ./ s3://docs.minhareceita.org/

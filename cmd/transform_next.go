@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/cuducos/minha-receita/transformnext"
+	"codeberg.org/cuducos/minha-receita/transformnext"
 	"github.com/spf13/cobra"
 )
 

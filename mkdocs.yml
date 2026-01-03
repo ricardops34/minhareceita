@@ -1,5 +1,5 @@
 site_name: Minha Receita
-repo_url: https://github.com/cuducos/minha-receita
+repo_url: https://codeberg.org/cuducos/minha-receita
 edit_uri: edit/main/docs/
 theme:
   language: pt

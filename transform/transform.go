@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cuducos/minha-receita/download"
+	"codeberg.org/cuducos/minha-receita/download"
 )
 
 const (

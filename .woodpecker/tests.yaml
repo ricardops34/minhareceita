@@ -1,0 +1,31 @@
+when:
+  - event: pull_request
+  - event: push
+    branch: main
+
+services:
+  - name: postgresql
+    image: postgres:16.1-bookworm
+    ports:
+      - 5432
+    environment:
+      POSTGRES_PASSWORD: minhareceita
+      POSTGRES_USER: minhareceita
+      POSTGRES_DB: minhareceita
+  - name: mongodb
+    image: mongo:8.0-noble
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: minhareceita
+      MONGO_INITDB_ROOT_PASSWORD: minhareceita
+    ports:
+      - 27017
+
+steps:
+  test:
+    image: golang:1.25-trixie
+    environment:
+      GOEXPERIMENT: jsonv2
+      TEST_POSTGRES_URL: postgres://minhareceita:minhareceita@postgresql:5432/minhareceita?sslmode=disable
+      TEST_MONGODB_URL: mongodb://minhareceita:minhareceita@mongodb:27017/minhareceita?authSource=admin
+    commands:
+      - go test --race ./...

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"codeberg.org/cuducos/minha-receita/testutils"
 	"github.com/cuducos/go-cnpj"
-	"github.com/cuducos/minha-receita/testutils"
 )
 
 func TestNewCompany(t *testing.T) {

@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"codeberg.org/cuducos/minha-receita/db"
 	"github.com/cuducos/go-cnpj"
-	"github.com/cuducos/minha-receita/db"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 

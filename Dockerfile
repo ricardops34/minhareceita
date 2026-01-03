@@ -9,7 +9,7 @@ RUN go build -o /usr/bin/minha-receita
 
 FROM debian:bookworm-slim
 LABEL org.opencontainers.image.description="Sua API web para consulta de informações do CNPJ da Receita Federal"
-LABEL org.opencontainers.image.source="https://github.com/cuducos/minha-receita"
+LABEL org.opencontainers.image.source="https://codeberg.org/cuducos/minha-receita"
 LABEL org.opencontainers.image.title="Minha Receita"
 
 RUN apt-get update && \

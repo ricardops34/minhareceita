@@ -1,0 +1,16 @@
+depends_on:
+  - format
+
+when:
+  - event: pull_request
+  - event: push
+    branch: main
+
+steps:
+  lint:
+    image: golang:1.25-trixie
+    environment:
+      GOEXPERIMENT: jsonv2
+    commands:
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.7.2
+      - golangci-lint run ./...

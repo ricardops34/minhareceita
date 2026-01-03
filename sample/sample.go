@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cuducos/minha-receita/download"
-	"github.com/cuducos/minha-receita/transform"
+	"codeberg.org/cuducos/minha-receita/download"
+	"codeberg.org/cuducos/minha-receita/transform"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 )

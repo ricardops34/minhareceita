@@ -3,7 +3,7 @@ package download
 import (
 	"testing"
 
-	"github.com/cuducos/minha-receita/testutils"
+	"codeberg.org/cuducos/minha-receita/testutils"
 )
 
 func TestNationalTreasureGetURLs(t *testing.T) {

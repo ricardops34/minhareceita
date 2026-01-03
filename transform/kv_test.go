@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cuducos/minha-receita/testutils"
+	"codeberg.org/cuducos/minha-receita/testutils"
 	"github.com/dgraph-io/badger/v4"
 )
 
