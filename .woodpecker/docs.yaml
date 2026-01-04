@@ -8,7 +8,7 @@ when:
 steps:
   build:
     image: squidfunk/mkdocs-material
-    commands: cd docs && mkdocs build
+    commands: mkdocs build
   deploy:
     image: amazon/aws-cli
     environment:
@@ -20,4 +20,4 @@ steps:
         from_secret: AWS_SECRET_ACCESS_KEY
       ENDPOINT_URL:
          from_secret: ENDPOINT_URL
-    commands: cd docs/site && aws s3 sync --endpoint-url ${ENDPOINT_URL} --acl public-read --delete ./ s3://docs.minhareceita.org/
+    commands: cd site && aws s3 sync --endpoint-url ${ENDPOINT_URL} --acl public-read --delete ./ s3://docs.minhareceita.org/
