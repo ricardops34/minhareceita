@@ -4,7 +4,6 @@ go 1.25.0
 
 require (
 	github.com/avast/retry-go/v4 v4.7.0
-	github.com/cuducos/chunk v1.1.5
 	github.com/cuducos/go-cnpj v0.1.2
 	github.com/dgraph-io/badger/v4 v4.8.0
 	github.com/huandu/go-sqlbuilder v1.38.1
@@ -15,6 +14,7 @@ require (
 	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/sync v0.19.0
 	golang.org/x/text v0.32.0
+	tangled.org/cuducos.me/chunk v1.1.6
 )
 
 require (
@@ -34,7 +34,9 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
+	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
+	github.com/muesli/go-app-paths v0.2.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.67.2 // indirect

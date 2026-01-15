@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cuducos/chunk"
 	"github.com/schollz/progressbar/v3"
+	"tangled.org/cuducos.me/chunk"
 )
 
 const (
