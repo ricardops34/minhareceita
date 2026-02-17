@@ -22,7 +22,7 @@ services:
 
 steps:
   test:
-    image: golang:1.25-trixie
+    image: golang:1.26-trixie
     environment:
       GOEXPERIMENT: jsonv2
       TEST_POSTGRES_URL: postgres://minhareceita:minhareceita@postgresql:5432/minhareceita?sslmode=disable

@@ -83,11 +83,14 @@ func (app *api) paginatedSearch(q *db.Query, w http.ResponseWriter, r *http.Requ
 		var b bytes.Buffer
 		b.WriteString("Tempo de requisição esgotou (Timeout)")
 		if q.Limit/2 > 1 {
-			b.WriteString(fmt.Sprintf(
+			_, err := fmt.Fprintf(&b,
 				". Essa busca solicitou %d CNPJs, experimente um número menor utilizando o parâmetro limit=%d, por exemplo.",
 				q.Limit,
 				q.Limit/2,
-			))
+			)
+			if err != nil {
+				slog.Warn("could not append tip to error response", "error", err)
+			}
 		}
 		app.messageResponse(w, http.StatusRequestTimeout, b.String())
 		registerMetric("paginatedSearch", r.Method, http.StatusRequestTimeout, i)

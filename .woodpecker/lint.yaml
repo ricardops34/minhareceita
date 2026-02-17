@@ -8,7 +8,7 @@ when:
 
 steps:
   lint:
-    image: golang:1.25-trixie
+    image: golang:1.26-trixie
     environment:
       GOEXPERIMENT: jsonv2
     commands:

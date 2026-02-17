@@ -205,8 +205,7 @@ func (c *Company) JSON() (string, error) {
 func jsonFields(i any) []string {
 	var fs []string
 	t := reflect.TypeOf(i)
-	for i := range t.NumField() {
-		f := t.Field(i)
+	for f := range t.Fields() {
 		fs = append(fs, f.Tag.Get("json"))
 	}
 	return fs
@@ -215,7 +214,7 @@ func jsonFields(i any) []string {
 // JSONFields lists the field names/paths for the JSON of a company.
 func CompanyJSONFields() []string {
 	c := jsonFields(Company{})
-	t := reflect.TypeOf(Company{})
+	t := reflect.TypeFor[Company]()
 	var fs []string
 	for i := range c {
 		f := t.Field(i)
