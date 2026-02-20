@@ -216,7 +216,7 @@ func newCompany(srcs map[string]*source, kv *kv, row []string) (*Company, error)
 		g.Go(func() error {
 			ibge, err := stringFromKV(srcs, kv, "tab", row[20], 3)
 			if err != nil {
-				slog.Debug("unknown CodigoMunicipioIBGE", "code", row[20], "cnpj", c.CNPJ)
+				slog.Warn("unknown CodigoMunicipioIBGE", "code", row[20], "cnpj", c.CNPJ)
 				return nil
 			}
 			c.CodigoMunicipioIBGE, err = toInt(*ibge)

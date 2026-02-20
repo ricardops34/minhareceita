@@ -81,7 +81,7 @@ func (c *reader) readFromReader(ctx context.Context, f io.Reader, bar *progressb
 			key := row[0]
 			val := row[1:]
 			if c.src.key == "imu" || c.src.key == "arb" || c.src.key == "pre" || c.src.key == "rea" {
-				key = cnpj.Base(row[1])
+				key = cnpj.Unmask(row[1])
 				val = append([]string{row[0]}, row[2:]...)
 			}
 			if err := kv.put(c.src, key, val); err != nil {
