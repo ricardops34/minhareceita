@@ -1,4 +1,4 @@
-package transformnext
+package transform
 
 import (
 	"strings"

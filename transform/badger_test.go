@@ -1,101 +1,85 @@
 package transform
 
 import (
-	"encoding/json/v2"
-	"reflect"
 	"testing"
-
-	"github.com/dgraph-io/badger/v4"
 )
 
-const testBaseCNPJ = "12345678"
-
-func newTestBadgerDB(t *testing.T) *badger.DB {
-	opt := badger.DefaultOptions(t.TempDir())
-	db, err := badger.Open(opt)
+func TestSerializeDeserialize(t *testing.T) {
+	kv, err := newBadger(t.TempDir(), false)
 	if err != nil {
-		t.Fatal("could not create a badger database")
+		t.Errorf("expected no error opening badger, got %s", err)
 	}
-	return db
+	defer func() {
+		if err := kv.db.Close(); err != nil {
+			t.Errorf("expected no error closing badger, got %s", err)
+		}
+	}()
+	for _, tc := range []struct {
+		name string
+		row  []string
+	}{
+		{"normal", []string{"um", "dois", "três"}},
+		{"empty", []string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var b []byte
+			s, err := kv.serialize(b, tc.row)
+			if err != nil {
+				t.Errorf("expected no error serializing, got %s", err)
+			}
+			got, err := kv.deserialize(s)
+			if err != nil {
+				t.Errorf("expected no error deserializing, got %s", err)
+			}
+			for idx := range len(tc.row) {
+				if got[idx] != tc.row[idx] {
+					t.Errorf("expected element %d to be %s, got %s", idx+1, tc.row[idx], got[idx])
+				}
+			}
+		})
+	}
 }
 
-func toBytes(t *testing.T, i any) []byte {
-	b, err := json.Marshal(i)
+func TestPutGet(t *testing.T) {
+	src := &source{prefix: "test"}
+	kv, err := newBadger(t.TempDir(), false)
 	if err != nil {
-		t.Fatalf("error marshaling %v: %s", i, err)
+		t.Errorf("expected no error opening badger, got %s", err)
 	}
-	return b
-}
-
-func saveItem(t *testing.T, db *badger.DB, k string, v any) error {
-	return db.Update(func(tx *badger.Txn) error {
-		return tx.Set([]byte(k), toBytes(t, v))
-	})
-}
-
-func TestReadItems(t *testing.T) {
-	t.Run("partners", func(t *testing.T) {
-		p := newTestPartner()
-		db := newTestBadgerDB(t)
-		defer func() {
-			if err := db.Close(); err != nil {
-				t.Errorf("expected no error closing the database connection, got %s", err)
+	defer func() {
+		if err := kv.db.Close(); err != nil {
+			t.Errorf("expected no error closing badger, got %s", err)
+		}
+	}()
+	for _, tc := range []struct {
+		name string
+		id   string
+		row  []string
+	}{
+		{"normal", "1", []string{"um", "dois", "três"}},
+		{"empty", "2", []string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := kv.put(src, tc.id, tc.row)
+			if err != nil {
+				t.Errorf("expected no error putting row, got %s", err)
 			}
-		}()
-		if err := saveItem(t, db, keyForPartners(testBaseCNPJ)+":md5hash", p); err != nil {
-			t.Errorf("expected no error saving partner, got %s", err)
-		}
-		got, err := partnersOf(db, testBaseCNPJ)
-		if err != nil {
-			t.Errorf("expected no error reading partners, got %s", err)
-		}
-		if len(got) != 1 {
-			t.Errorf("expected merged partners to have 1 partner, got %d", len(got))
-			return
-		}
-		if !reflect.DeepEqual(got[0], p) {
-			t.Errorf("expected merged partner to be %v, got %v", p, got[0])
-		}
-	})
-
-	t.Run("base", func(t *testing.T) {
-		db := newTestBadgerDB(t)
-		defer func() {
-			if err := db.Close(); err != nil {
-				t.Errorf("expected no error closing the database connection, got %s", err)
+			k := src.keyFor(tc.id)
+			got, err := kv.get(k)
+			if err != nil {
+				t.Errorf("expected no error getting row, got %s", err)
 			}
-		}()
-		d := newTestBaseCNPJ()
-		if err := saveItem(t, db, keyForBase(testBaseCNPJ), d); err != nil {
-			t.Errorf("expected no error saving partner, got %s", err)
-		}
-		got, err := baseOf(db, testBaseCNPJ)
-		if err != nil {
-			t.Errorf("expected no error reading base, got %s", err)
-		}
-		if !reflect.DeepEqual(got, d) {
-			t.Errorf("expected %v, got %v", d, got)
-		}
-	})
-
-	t.Run("taxes", func(t *testing.T) {
-		db := newTestBadgerDB(t)
-		defer func() {
-			if err := db.Close(); err != nil {
-				t.Errorf("expected no error closing the database connection, got %s", err)
+			if len(tc.row) == 0 {
+				if got != nil {
+					t.Errorf("expected value to be nil, got %v", got)
+				}
+			} else {
+				for idx := range tc.row {
+					if got[idx] != tc.row[idx] {
+						t.Errorf("expected element %d to be %s, got %s", idx+1, tc.row[idx], got[idx])
+					}
+				}
 			}
-		}()
-		d := newTestTaxes()
-		if err := saveItem(t, db, keyForSimpleTaxes(testBaseCNPJ), d); err != nil {
-			t.Errorf("expected no error saving partner, got %s", err)
-		}
-		got, err := simpleTaxesOf(db, testBaseCNPJ)
-		if err != nil {
-			t.Errorf("expected no error reading taxes, got %s", err)
-		}
-		if !reflect.DeepEqual(got, d) {
-			t.Errorf("expected %v, got %v", d, got)
-		}
-	})
-
+		})
+	}
 }

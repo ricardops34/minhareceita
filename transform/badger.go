@@ -1,84 +1,129 @@
 package transform
 
 import (
-	"encoding/json/v2"
-	"errors"
+	"bytes"
+	"encoding/binary"
 	"fmt"
-	"sort"
+	"io"
+	"log/slog"
+	"os"
+	"sync"
 
-	"github.com/cuducos/go-cnpj"
 	"github.com/dgraph-io/badger/v4"
 )
 
-func keyForPartners(n string) string    { return fmt.Sprintf("p-%s", n) }
-func keyForBase(n string) string        { return fmt.Sprintf("b-%s", n) }
-func keyForSimpleTaxes(n string) string { return fmt.Sprintf("st-%s", n) }
-func keyForTaxRegime(n string) string   { return fmt.Sprintf("tr-%s", cnpj.Unmask(n)) }
+// As of 2025-11 the longest sequence we've got was 257, so setting it to 512 to
+// have some room — maybe this could be set from a CLI flag to avoid recompiling
+// when source data changes and needs more space.
+const defaultPoolSize = 512
 
-func baseOf(db *badger.DB, n string) (baseData, error) {
-	var d baseData
-	err := db.View(func(txn *badger.Txn) error {
-		i, err := txn.Get([]byte(keyForBase(n)))
-		if errors.Is(err, badger.ErrKeyNotFound) {
+type kv struct {
+	db   *badger.DB
+	pool sync.Pool
+}
+
+func (kv *kv) serialize(b []byte, row []string) ([]byte, error) {
+	var err error
+	for _, v := range row {
+		s := uint32(len(v)) // used to deserialize later on
+		b, err = binary.Append(b, binary.LittleEndian, s)
+		if err != nil {
+			return nil, err
+		}
+		b = append(b, v...)
+	}
+	return b, nil
+}
+
+func (kv *kv) deserialize(val []byte) ([]string, error) {
+	if val == nil {
+		return nil, nil
+	}
+	var out []string
+	r := bytes.NewReader(val)
+	for r.Len() > 0 {
+		err := func() error {
+			var s uint32
+			if err := binary.Read(r, binary.LittleEndian, &s); err != nil {
+				return fmt.Errorf("error reading size: %w", err)
+			}
+			b := kv.pool.Get().(*[]byte)
+			*b = (*b)[:s]
+			defer kv.pool.Put(b)
+			if cap(*b) < int(s) {
+				return fmt.Errorf("buffer from pool too small (%d): needs %d", cap(*b), s)
+			}
+			n, err := io.ReadFull(r, *b)
+			if err != nil {
+				return fmt.Errorf("could not deserialize value: %w", err)
+			}
+			if n != int(s) {
+				return fmt.Errorf("expected to read %d bytes, got %d", s, n)
+			}
+			out = append(out, string(*b))
 			return nil
-		}
+		}()
 		if err != nil {
-			return fmt.Errorf("could not get key %s: %w", keyForBase(n), err)
+			return nil, err
 		}
-		v, err := i.ValueCopy(nil)
+	}
+	return out, nil
+}
+
+func (kv *kv) put(src *source, id string, row []string) error {
+	if len(row) == 0 {
+		return nil
+	}
+	key := src.keyFor(id)
+	b := kv.pool.Get().(*[]byte)
+	*b = (*b)[:0]
+	defer kv.pool.Put(b)
+	val, err := kv.serialize(*b, row)
+	if err != nil {
+		return fmt.Errorf("could not serialize row %v: %w", row, err)
+	}
+	return kv.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(key, val)
+	})
+}
+
+func (kv *kv) get(k []byte) ([]string, error) {
+	val := kv.pool.Get().(*[]byte)
+	*val = (*val)[:0]
+	defer kv.pool.Put(val)
+	err := kv.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(k)
 		if err != nil {
-			return fmt.Errorf("could not read value for key %s: %w", keyForBase(n), err)
+			if err == badger.ErrKeyNotFound {
+				return nil
+			}
+			return fmt.Errorf("could not get key: %w", err)
 		}
-		if err := json.Unmarshal(v, &d); err != nil {
-			return fmt.Errorf("could not parse base: %w", err)
+		*val, err = item.ValueCopy(*val)
+		if err != nil {
+			return fmt.Errorf("could not read value: %w", err)
 		}
 		return nil
 	})
 	if err != nil {
-		return baseData{}, fmt.Errorf("error getting base for %s: %w", n, err)
+		return nil, fmt.Errorf("could not get key %s: %w", string(k), err)
 	}
-	return d, nil
+	return kv.deserialize(*val)
 }
 
-func simpleTaxesOf(db *badger.DB, n string) (simpleTaxesData, error) {
-	var d simpleTaxesData
-	err := db.View(func(txn *badger.Txn) error {
-		i, err := txn.Get([]byte(keyForSimpleTaxes(n)))
-		if errors.Is(err, badger.ErrKeyNotFound) {
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("could not get key %s: %w", keyForSimpleTaxes(n), err)
-		}
-		v, err := i.ValueCopy(nil)
-		if err != nil {
-			return fmt.Errorf("could not read value for key %s: %w", keyForSimpleTaxes(n), err)
-		}
-		if err := json.Unmarshal(v, &d); err != nil {
-			return fmt.Errorf("could not parse taxes: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
-		return simpleTaxesData{}, fmt.Errorf("error getting taxes for %s: %w", n, err)
-	}
-	return d, nil
-}
-
-func taxRegimeOf(db *badger.DB, n string) (TaxRegimes, error) {
-	var ts TaxRegimes
-	pre := []byte(keyForTaxRegime(n))
-	err := db.View(func(txn *badger.Txn) error {
+func (kv *kv) getPrefix(k []byte) ([][]string, error) {
+	vs := [][]string{}
+	err := kv.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
-		for it.Seek(pre); it.ValidForPrefix(pre); it.Next() {
-			var t TaxRegime
+		for it.Seek(k); it.ValidForPrefix(k); it.Next() {
 			i := it.Item()
-			err := i.Value(func(v []byte) error {
-				if err := json.Unmarshal(v, &t); err != nil {
-					return fmt.Errorf("could not parse tax regime: %w", err)
+			err := i.Value(func(b []byte) error {
+				v, err := kv.deserialize(b)
+				if err != nil {
+					return fmt.Errorf("could not deserialize %s: %w", string(i.Key()), err)
 				}
-				ts = append(ts, t)
+				vs = append(vs, v)
 				return nil
 			})
 			if err != nil {
@@ -88,36 +133,36 @@ func taxRegimeOf(db *badger.DB, n string) (TaxRegimes, error) {
 		return nil
 	})
 	if err != nil {
-		return TaxRegimes{}, fmt.Errorf("error getting tax regime for %s: %w", n, err)
+		return nil, err
 	}
-	sort.Sort(TaxRegimes(ts))
-	return ts, nil
+	return vs, nil
 }
 
-func partnersOf(db *badger.DB, n string) ([]PartnerData, error) {
-	var ps []PartnerData
-	pre := []byte(keyForPartners(n))
-	err := db.View(func(txn *badger.Txn) error {
-		it := txn.NewIterator(badger.DefaultIteratorOptions)
-		defer it.Close()
-		for it.Seek(pre); it.ValidForPrefix(pre); it.Next() {
-			var p PartnerData
-			i := it.Item()
-			err := i.Value(func(v []byte) error {
-				if err := json.Unmarshal(v, &p); err != nil {
-					return fmt.Errorf("could not parse parter: %w", err)
-				}
-				ps = append(ps, p)
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("error getting partners for %s: %w", n, err)
+type noLogger struct{}
+
+func (*noLogger) Errorf(string, ...any)   {}
+func (*noLogger) Warningf(string, ...any) {}
+func (*noLogger) Infof(string, ...any)    {}
+func (*noLogger) Debugf(string, ...any)   {}
+
+func newBadger(dir string, ro bool) (*kv, error) {
+	opt := badger.DefaultOptions(dir).WithReadOnly(ro).WithBypassLockGuard(true).WithDetectConflicts(false)
+	slog.Debug("Creating temporary key-value storage", "path", dir)
+	if os.Getenv("DEBUG") == "" {
+		opt = opt.WithLogger(&noLogger{})
 	}
-	return ps, nil
+	db, err := badger.Open(opt)
+	if err != nil {
+		return nil, fmt.Errorf("could not open badger at %s: %w", dir, err)
+	}
+	kv := &kv{
+		db: db,
+		pool: sync.Pool{
+			New: func() any {
+				b := make([]byte, defaultPoolSize)
+				return &b
+			},
+		},
+	}
+	return kv, nil
 }

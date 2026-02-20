@@ -1,4 +1,4 @@
-package transformnext
+package transform
 
 import (
 	"context"
@@ -54,19 +54,12 @@ func TestWriteJSONs(t *testing.T) {
 			t.Errorf("expected no error closing badger, got %s", err)
 		}
 	}()
-	for key, src := range srcs {
-		if key == "est" {
-			continue
-		}
-		if err := loadCSVs(ctx, "../testdata", src, nil, kv); err != nil {
-			t.Fatalf("expected no error loading %s data, got %s", key, err)
-		}
-	}
+	ext := loadAllTestSources(t, kv)
 	db := &testDB{}
 	if err := db.PreLoad(); err != nil {
 		t.Fatalf("expected no error calling PreLoad, got %s", err)
 	}
-	err = writeJSONs(ctx, srcs, kv, db, 16, 8192, "../testdata", false)
+	err = writeJSONs(ctx, srcs, kv, db, 16, 8192, ext, false)
 	if err != nil {
 		t.Fatalf("expected no error processing test data, got %s", err)
 	}

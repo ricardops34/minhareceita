@@ -3,7 +3,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -20,20 +19,6 @@ See --help for more details.
 )
 
 var dir string
-
-func assertDirExists() error {
-	i, err := os.Stat(dir)
-	if os.IsNotExist(err) {
-		return fmt.Errorf("directory %s does not exist", dir)
-	}
-	if err != nil {
-		return err
-	}
-	if !i.Mode().IsDir() {
-		return fmt.Errorf("%s is not a directory", dir)
-	}
-	return nil
-}
 
 var rootCmd = &cobra.Command{
 	Use:   "minha-receita <command>",
@@ -99,18 +84,12 @@ func CLI() *cobra.Command {
 	}
 	rootCmd.AddCommand(
 		apiCLI(),
-		downloadCLI(),
-		urlsCLI(),
-		checkCLI(),
 		createCmd,
 		dropCmd,
 		createExtraIndexesCmd,
-		transformCLI(),
+		addDataDir(cleanupTempCmd),
+		addDataDir(transformCLI()),
 		sampleCLI(),
 	)
-	if os.Getenv("DEBUG") != "" {
-		rootCmd.AddCommand(addDataDir(transformNextCLI()))
-		rootCmd.AddCommand(addDataDir(cleanupTempCmd))
-	}
 	return rootCmd
 }
