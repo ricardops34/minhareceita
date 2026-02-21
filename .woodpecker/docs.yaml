@@ -19,5 +19,5 @@ steps:
       AWS_SECRET_ACCESS_KEY:
         from_secret: AWS_SECRET_ACCESS_KEY
       ENDPOINT_URL:
-         from_secret: ENDPOINT_URL
-    commands: cd site && aws s3 sync --endpoint-url ${ENDPOINT_URL} --acl public-read --delete ./ s3://docs.minhareceita.org/
+        from_secret: ENDPOINT_URL
+    commands: cd site && aws s3 sync --endpoint-url "${ENDPOINT_URL}" --acl public-read --delete ./ s3://docs.minhareceita.org/
