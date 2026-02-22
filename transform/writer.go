@@ -84,13 +84,15 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 					slog.Warn("could not close archive", "path", pth, "error", err)
 				}
 			}()
+			for _, z := range a.File {
+				bar.AddMax64(int64(z.UncompressedSize64))
+			}
 			var g errgroup.Group
 			for _, z := range a.File {
+				if z.FileInfo().IsDir() {
+					continue
+				}
 				g.Go(func() error {
-					bar.AddMax64(int64(z.UncompressedSize64))
-					if z.FileInfo().IsDir() {
-						return nil
-					}
 					f, err := z.Open()
 					if err != nil {
 						return fmt.Errorf("could not read %s from %s: %w", z.Name, pth, err)

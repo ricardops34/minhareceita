@@ -212,7 +212,7 @@ func Sample(src, target string, m int) error {
 	bar := progressbar.Default(int64(len(ls)))
 	defer func() {
 		if err := bar.Close(); err != nil {
-			slog.Warn("could not close the progress bar", "error", bar)
+			slog.Warn("could not close the progress bar", "error", err)
 		}
 	}()
 	bar.Describe("Creating sample files")
@@ -222,10 +222,10 @@ func Sample(src, target string, m int) error {
 	var g errgroup.Group
 	for _, pth := range ls {
 		g.Go(func() error {
-			if err := bar.Add(1); err != nil {
+			if err := makeSample(pth, target, m); err != nil {
 				return err
 			}
-			return makeSample(pth, target, m)
+			return bar.Add(1)
 		})
 	}
 	if err := g.Wait(); err != nil {

@@ -111,11 +111,13 @@ func (c *reader) readArchivedCSV(ctx context.Context, bar *progressbar.ProgressB
 			slog.Warn("could not close %s reader", "path", c.pth, "error", err)
 		}
 	}()
-	var g errgroup.Group
-	for _, z := range a.File {
-		if bar != nil {
+	if bar != nil {
+		for _, z := range a.File {
 			bar.AddMax64(int64(z.UncompressedSize64))
 		}
+	}
+	var g errgroup.Group
+	for _, z := range a.File {
 		if z.FileInfo().IsDir() {
 			continue
 		}
