@@ -219,6 +219,9 @@ func transform(dir string, db database, batch, maxDB int, privacy bool, ibgeMuni
 	if err := g.Wait(); err != nil {
 		return err
 	}
+	if err := kv.flush(); err != nil {
+		return fmt.Errorf("could not flush key-value storage: %w", err)
+	}
 	if err := writeJSONs(ctx, srcs, kv, db, maxDB, batch, ext, privacy); err != nil {
 		return err
 	}

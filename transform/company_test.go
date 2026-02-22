@@ -33,6 +33,9 @@ func loadAllTestSources(t *testing.T, kv *kv) string {
 			t.Fatalf("expected no error loading %s data, got %s", src.prefix, err)
 		}
 	}
+	if err := kv.flush(); err != nil {
+		t.Fatalf("expected no error flushing key-value storage, got %s", err)
+	}
 	return ext
 }
 

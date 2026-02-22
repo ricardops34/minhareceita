@@ -19,10 +19,12 @@ const defaultPoolSize = 512
 
 type kv struct {
 	db   *badger.DB
+	wb   *badger.WriteBatch
 	pool sync.Pool
 }
 
-func (kv *kv) serialize(b []byte, row []string) ([]byte, error) {
+func (kv *kv) serialize(row []string) ([]byte, error) {
+	var b []byte
 	var err error
 	for _, v := range row {
 		s := uint32(len(v)) // used to deserialize later on
@@ -75,16 +77,19 @@ func (kv *kv) put(src *source, id string, row []string) error {
 		return nil
 	}
 	key := src.keyFor(id)
-	b := kv.pool.Get().(*[]byte)
-	*b = (*b)[:0]
-	defer kv.pool.Put(b)
-	val, err := kv.serialize(*b, row)
+	val, err := kv.serialize(row)
 	if err != nil {
 		return fmt.Errorf("could not serialize row %v: %w", row, err)
 	}
-	return kv.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(key, val)
-	})
+	return kv.wb.Set(key, val)
+}
+
+func (kv *kv) flush() error {
+	if err := kv.wb.Flush(); err != nil {
+		return err
+	}
+	kv.wb = kv.db.NewWriteBatch()
+	return nil
 }
 
 func (kv *kv) get(k []byte) ([]string, error) {
@@ -157,6 +162,7 @@ func newBadger(dir string, ro bool) (*kv, error) {
 	}
 	kv := &kv{
 		db: db,
+		wb: db.NewWriteBatch(),
 		pool: sync.Pool{
 			New: func() any {
 				b := make([]byte, defaultPoolSize)

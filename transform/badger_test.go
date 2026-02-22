@@ -22,8 +22,7 @@ func TestSerializeDeserialize(t *testing.T) {
 		{"empty", []string{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var b []byte
-			s, err := kv.serialize(b, tc.row)
+			s, err := kv.serialize(tc.row)
 			if err != nil {
 				t.Errorf("expected no error serializing, got %s", err)
 			}
@@ -63,6 +62,9 @@ func TestPutGet(t *testing.T) {
 			err := kv.put(src, tc.id, tc.row)
 			if err != nil {
 				t.Errorf("expected no error putting row, got %s", err)
+			}
+			if err := kv.flush(); err != nil {
+				t.Errorf("expected no error flushing, got %s", err)
 			}
 			k := src.keyFor(tc.id)
 			got, err := kv.get(k)
