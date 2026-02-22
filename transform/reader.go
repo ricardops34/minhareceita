@@ -216,15 +216,16 @@ func unzipMainArchive(pth, dir string, bar *progressbar.ProgressBar) error {
 		}
 		bar.AddMax64(n - 1) // -1 to compensate for the initial max=1 from newProgressBar
 	}
+	var g errgroup.Group
 	for _, z := range a.File {
 		if z.FileInfo().IsDir() {
 			continue
 		}
-		if err := extractFile(z, dir, bar); err != nil {
-			return err
-		}
+		g.Go(func() error {
+			return extractFile(z, dir, bar)
+		})
 	}
-	return nil
+	return g.Wait()
 }
 
 func loadIBGEMunicipalitiesFromURL(ctx context.Context, url string, src *source, bar *progressbar.ProgressBar, kv *kv) error {
