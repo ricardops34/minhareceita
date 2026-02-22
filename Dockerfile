@@ -7,7 +7,7 @@ RUN go mod download
 COPY . .
 RUN go build -o /usr/bin/minha-receita
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 LABEL org.opencontainers.image.description="Sua API web para consulta de informações do CNPJ da Receita Federal"
 LABEL org.opencontainers.image.source="https://codeberg.org/cuducos/minha-receita"
 LABEL org.opencontainers.image.title="Minha Receita"

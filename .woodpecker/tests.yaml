@@ -5,7 +5,7 @@ when:
 
 services:
   - name: postgresql
-    image: postgres:16.1-bookworm
+    image: postgres:18-trixie
     ports:
       - 5432
     environment:
