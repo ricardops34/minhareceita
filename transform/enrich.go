@@ -1,4 +1,4 @@
-package transformnext
+package transform
 
 import (
 	"errors"
@@ -234,9 +234,11 @@ func (c *Company) partners(srcs map[string]*source, kv *kv) error {
 				case 0:
 					f = "Não se aplica"
 				default:
-					return fmt.Errorf("unknown CodigoFaixaEtaria for %s: %d", c.CNPJ, *p.CodigoFaixaEtaria)
+					slog.Error("unknown CodigoFaixaEtaria", "value", *p.CodigoFaixaEtaria, "cnpj", c.CNPJ)
 				}
-				p.FaixaEtaria = &f
+				if f != "" {
+					p.FaixaEtaria = &f
+				}
 			}
 			ch <- p
 			return nil
@@ -267,7 +269,7 @@ func (c *Company) taxes(srcs map[string]*source, kv *kv) error {
 			if !ok {
 				return fmt.Errorf("could not find lookup %s", p)
 			}
-			k := src.keyPrefixFor(c.CNPJ[:8])
+			k := src.keyPrefixFor(c.CNPJ)
 			rows, err := kv.getPrefix(k)
 			if err != nil {
 				if errors.Is(err, badger.ErrKeyNotFound) {
@@ -282,7 +284,9 @@ func (c *Company) taxes(srcs map[string]*source, kv *kv) error {
 					return fmt.Errorf("could not parse Ano for %s: %w", string(k), err)
 				}
 				t.Ano = *y
-				t.CNPJDaSCP = &row[1]
+				if row[1] != "" && row[1] != "0" {
+					t.CNPJDaSCP = &row[1]
+				}
 				t.FormaDeTributação = row[2]
 				q, err := toInt(row[3])
 				if err != nil {
@@ -320,7 +324,8 @@ func (c *Company) descricaoMatrizFilial() error {
 	case 2:
 		d = "FILIAL"
 	default:
-		return fmt.Errorf("unknown IdentificadorMatrizFilial for %s: %d", c.CNPJ, *c.IdentificadorMatrizFilial)
+		slog.Error("unknown IdentificadorMatrizFilial", "value", *c.IdentificadorMatrizFilial, "cnpj", c.CNPJ)
+		return nil
 	}
 	c.DescricaoMatrizFilial = &d
 	return nil
@@ -343,7 +348,8 @@ func (c *Company) descricaoSituacaoCadastral() error {
 	case 8:
 		d = "BAIXADA"
 	default:
-		return fmt.Errorf("unknown IdentificadorMatrizFilial for %s: %d", c.CNPJ, *c.IdentificadorMatrizFilial)
+		slog.Error("unknown SituacaoCadastral", "value", *c.SituacaoCadastral, "cnpj", c.CNPJ)
+		return nil
 	}
 	c.DescricaoSituacaoCadastral = &d
 	return nil
@@ -364,7 +370,8 @@ func (c *Company) porte() error {
 	case 5:
 		p = "DEMAIS"
 	default:
-		return fmt.Errorf("unknown CodigoPorte for %s: %d", c.CNPJ, c.CodigoPorte)
+		slog.Error("unknown CodigoPorte", "value", *c.CodigoPorte, "cnpj", c.CNPJ)
+		return nil
 	}
 	c.Porte = &p
 	return nil

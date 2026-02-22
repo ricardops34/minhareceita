@@ -7,8 +7,8 @@ when:
 
 steps:
   build:
-    image: squidfunk/mkdocs-material
-    commands: mkdocs build
+    image: zensical/zensical
+    commands: zensical build
   deploy:
     image: amazon/aws-cli
     environment:

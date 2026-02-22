@@ -15,40 +15,19 @@ Usando PostgreSQL, a URI será `postgres://minhareceita:minhareceita@localhost:5
 
 Usando MongoDB, a URI será `mongodb://minhareceita:minhareceita@localhost:27017/minhareceita?authSource=admin`.
 
-## Download dos dados
+## Dados
 
-O comando `download` baixa dados da Receita Federal, mais um arquivo do Tesouro Nacional com o código dos municípios do IBGE. O servidor da Receita Federal pode ser lento e instável, então todo os arquivos são [baixados em pequenas fatias](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Range).
+Os dados são disponibilizados mensalmente pela [Receita Federal](https://dados.gov.br/dados/conjuntos-dados/cadastro-nacional-da-pessoa-juridica-cnpj). Para o comando `transform` funcionar, é necessário um diretório contendo:
 
-O comando aceita um opção `--directory` (ou `-d`) com um diretório onde serão salvos os arquivos originais da Receita Federal. O padrão é `data/`.
+* o arquivo `YYYY-MM.zip` da Receita Federal com os dados do CNPJ
+* os arquivos de regime tributário com prefixo `entidades-*.zip`
 
-Caso o download falhe, é recomendado variar as configurações explicadas no `--help`, por exemplo:
+A fonte oficial desses arquivos é sempre o [Portal de Dados Abertos](https://dados.gov.br) do governo federal:
 
-* número de downloads paralelos com o `--parallel` (ou `-p`)
-* números de tentativas de download de cada fatia de cada arquivo com `--retries` (ou `-r`)
-* tempo limite para cada fatia com `--timeout` (ou `-t`)
-* rodar o comando de download sucessivas vezes com a opção `--skip` (ou `-x`) para baixar apenas os arquivos que estão faltando
-
-Em último caso, é possível listar as URLs para download dos arquivos com comando `urls`; e, então, tentar fazer o download de outra forma (manualmente, com alguma ferramenta que permite recomeçar downloads interrompidos, etc.). Caso essa seja uma opção crie um arquivo `updated_at.txt` no mesmo diretório com a data de extração dos dados no formato `YYYY-MM-DD`.
-
-### Exemplos de uso
-
-Sem Docker:
-
-```console
-$ minha-receita download
-$ minha-receita download --timeout 1h42m12s
-$ minha-receita urls
-```
-
-Com Docker:
-
-```console
-$ docker compose run --rm minha-receita download --directory /mnt/data/
-```
-
-## Verificação dos downloads
-
-O servidor da Receita Federal, além de lento e instável, não oferece uma opção de [soma de verificação](https://pt.wikipedia.org/wiki/Soma_de_verifica%C3%A7%C3%A3o). Com isso, pode acontecer de os arquivos baixados estarem corrompidos. O comando `check` verifica a integridade dos arquivos `.zip` baixados. A opção `--delete` exclui os arquivos que falharem na verificação.
+1. Busque por _CPNJ_ e escolha _Cadastro Nacional da Pessoa Jurídica - CNPJ_
+2. Na aba _Recursos_ os arquivos necessários são encontrados em:
+    * Inscrições no CNPJ (`YYYY-MM.zip`)
+    * Regimes Tributários (`entidades-*.zip`)
 
 ## Tratamento dos dados
 

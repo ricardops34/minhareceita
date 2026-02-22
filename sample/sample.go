@@ -3,6 +3,7 @@ package sample
 import (
 	"archive/zip"
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -10,10 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"codeberg.org/cuducos/minha-receita/download"
-	"codeberg.org/cuducos/minha-receita/transform"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 )
@@ -77,6 +75,43 @@ func makeSampleFromCSV(src, outDir string, m int) (err error) { // using named r
 	return nil
 }
 
+// sampleInnerZip reads a zip from r, samples the CSVs inside it, and writes
+// a new zip with the sampled content to w. Used for the bundled zip case
+// where the outer zip (e.g. YYYY-MM.zip) contains inner zip files.
+func sampleInnerZip(r io.Reader, w io.Writer, m int) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return fmt.Errorf("error reading inner zip: %w", err)
+	}
+	inner, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return fmt.Errorf("error parsing inner zip: %w", err)
+	}
+	zw := zip.NewWriter(w)
+	for _, z := range inner.File {
+		if z.FileInfo().IsDir() {
+			continue
+		}
+		fSrc, err := z.Open()
+		if err != nil {
+			return fmt.Errorf("error opening %s in inner zip: %w", z.Name, err)
+		}
+		defer func() {
+			if err := fSrc.Close(); err != nil {
+				slog.Warn("could not close", "path", z.Name, "error", err)
+			}
+		}()
+		fOut, err := zw.Create(z.Name)
+		if err != nil {
+			return fmt.Errorf("error creating %s in sampled inner zip: %w", z.Name, err)
+		}
+		if err := sampleLines(fSrc, fOut, m); err != nil {
+			return fmt.Errorf("error sampling %s: %w", z.Name, err)
+		}
+	}
+	return zw.Close()
+}
+
 func makeSampleFromZIP(src, outDir string, m int) (err error) { // using named return so we can set it in the defer call
 	r, err := zip.OpenReader(src)
 	if err != nil {
@@ -89,103 +124,65 @@ func makeSampleFromZIP(src, outDir string, m int) (err error) { // using named r
 	}()
 
 	name := filepath.Base(src)
-	base := strings.TrimSuffix(name, filepath.Ext(src))
 	out := filepath.Join(outDir, name)
+
+	o, err := os.Create(out)
+	if err != nil {
+		return fmt.Errorf("error creating %s: %w", out, err)
+	}
+	defer func() {
+		if e := o.Close(); e != nil && err == nil {
+			err = fmt.Errorf("error closing %s: %w", out, e)
+		}
+	}()
+
+	buf := bufio.NewWriter(o)
+	zw := zip.NewWriter(buf)
+	defer func() {
+		if e := zw.Close(); e != nil && err == nil {
+			err = fmt.Errorf("could not write zip buffer: %w", e)
+		}
+	}()
+
 	for _, z := range r.File {
 		if z.FileInfo().IsDir() {
 			continue
 		}
 		fSrc, err := z.Open()
 		if err != nil {
-			return fmt.Errorf("error reading file %s in %s: %w", z.Name, src, err)
+			return fmt.Errorf("error reading %s in %s: %w", z.Name, src, err)
 		}
 		defer func() {
 			if err := fSrc.Close(); err != nil {
 				slog.Warn("could not close", "path", z.Name, "error", err)
 			}
 		}()
-
-		o, err := os.Create(out)
-		if err != nil {
-			return fmt.Errorf("error creating %s: %w", out, err)
-		}
-		defer func() {
-			if e := o.Close(); e != nil && err == nil {
-				err = fmt.Errorf("could not close %s: %w", out, err)
+		if strings.ToLower(filepath.Ext(z.Name)) == ".zip" {
+			// Bundled zip: outer zip contains inner zip files (e.g. YYYY-MM.zip)
+			fOut, err := zw.Create(z.Name)
+			if err != nil {
+				return fmt.Errorf("error creating %s in output: %w", z.Name, err)
 			}
-		}()
-
-		buf := bufio.NewWriter(o)
-		w := zip.NewWriter(buf)
-		defer func() {
-			if e := w.Close(); e != nil && err == nil {
-				err = fmt.Errorf("could not wrote buffer: %w", err)
+			if err := sampleInnerZip(fSrc, fOut, m); err != nil {
+				return fmt.Errorf("error sampling inner zip %s: %w", z.Name, err)
 			}
-		}()
-
-		fOut, err := w.Create(base)
-		if err != nil {
-			return fmt.Errorf("error creating %s in %s: %w", name, out, err)
+		} else {
+			// Regular zip: outer zip contains a CSV (e.g. entidades-*.zip)
+			base := strings.TrimSuffix(name, filepath.Ext(name))
+			fOut, err := zw.Create(base)
+			if err != nil {
+				return fmt.Errorf("error creating %s in output: %w", base, err)
+			}
+			if err := sampleLines(fSrc, fOut, m); err != nil {
+				return fmt.Errorf("error sampling %s in %s: %w", z.Name, src, err)
+			}
+			break // only one CSV per regular zip
 		}
-		if err := sampleLines(fSrc, fOut, m); err != nil {
-			return fmt.Errorf(
-				"error creating sample %s from %s in %s: %w",
-				out,
-				z.Name,
-				src,
-				err,
-			)
-		}
-		break
 	}
 	return nil
 }
 
-func createUpdateAt(src, dir string, dt string) (err error) {
-	n := filepath.Base(src)
-	out := filepath.Join(dir, n)
-	r, err := os.Open(src)
-	if os.IsNotExist(err) {
-		if dt == "" {
-			slog.Warn("File not found", "path", src)
-			return nil
-		}
-		if _, err := time.Parse("2006-01-02", dt); err != nil {
-			slog.Warn("updated_at.txt will not be created, date is not YYYY-MM-DD", "date", dt)
-			return nil
-		}
-		if err := os.WriteFile(out, []byte(dt), 0755); err != nil {
-			return fmt.Errorf("error writing %s: %w", out, err)
-		}
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("error opening %s in sample directory: %w", n, err)
-	}
-	defer func() {
-		if err := r.Close(); err != nil {
-			slog.Warn("could not close", "path", src, "error", err)
-		}
-	}()
-	w, err := os.Create(out)
-	if err != nil {
-		return fmt.Errorf("error creating %s: %w", out, err)
-	}
-	defer func() {
-		if e := w.Close(); e != nil && err == nil {
-			err = fmt.Errorf("error closing %s: %w", out, e)
-		}
-	}()
-	if _, err := io.Copy(w, r); err != nil {
-		return fmt.Errorf("error copying %s to %s: %w", src, out, err)
-	}
-	return nil
-}
-
-func makeSample(src, outDir string, m int, dt string) error {
-	if filepath.Base(src) == download.FederalRevenueUpdatedAt {
-		return createUpdateAt(src, outDir, dt)
-	}
+func makeSample(src, outDir string, m int) error {
 	ext := strings.ToLower(filepath.Ext(src))
 	switch ext {
 	case ".zip":
@@ -198,7 +195,7 @@ func makeSample(src, outDir string, m int, dt string) error {
 
 // Sample generates sample data on the target directory, coping the first `m`
 // lines of each file from the source directory.
-func Sample(src, target string, m int, updatedAt string) error {
+func Sample(src, target string, m int) error {
 	if src == target {
 		return fmt.Errorf("data directory and target directory cannot be the same")
 	}
@@ -211,16 +208,6 @@ func Sample(src, target string, m int, updatedAt string) error {
 	}
 	if len(ls) == 0 {
 		return errors.New("source directory %s has no zip files")
-	}
-	ls = append(ls, filepath.Join(src, download.FederalRevenueUpdatedAt))
-	nt, f, err := transform.NationalTreasureFile(src)
-	if err == nil { // we just need the path, so no problem ignoring the error
-		if err := f.Close(); err != nil {
-			slog.Warn("error closing", "path", nt, "error", err)
-		}
-	}
-	if nt != "" {
-		ls = append(ls, nt)
 	}
 	bar := progressbar.Default(int64(len(ls)))
 	defer func() {
@@ -238,7 +225,7 @@ func Sample(src, target string, m int, updatedAt string) error {
 			if err := bar.Add(1); err != nil {
 				return err
 			}
-			return makeSample(pth, target, m, updatedAt)
+			return makeSample(pth, target, m)
 		})
 	}
 	if err := g.Wait(); err != nil {

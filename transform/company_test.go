@@ -1,392 +1,388 @@
 package transform
 
 import (
-	"strings"
+	"context"
+	"path/filepath"
 	"testing"
 	"time"
-
-	"codeberg.org/cuducos/minha-receita/testutils"
-	"github.com/cuducos/go-cnpj"
 )
+
+func loadAllTestSources(t *testing.T, kv *kv) string {
+	t.Helper()
+	srcs := sources()
+	ctx := context.Background()
+	ts := testIBGEMunicipalitiesServer(t)
+	defer ts.Close()
+
+	ext := t.TempDir()
+	pth := filepath.Join(testdataDir, "2026-01.zip")
+	if err := unzipMainArchive(pth, ext, nil); err != nil {
+		t.Fatalf("expected no error extracting archive, got %s", err)
+	}
+	for _, src := range srcs {
+		var err error
+		switch src.kind {
+		case CompanySrc:
+			err = loadCSVs(ctx, ext, src, nil, kv, false)
+		case TaxSrc:
+			err = loadCSVs(ctx, testdataDir, src, nil, kv, false)
+		case IBGESrc:
+			err = loadIBGEMunicipalitiesFromURL(ctx, ts.URL, src, nil, kv)
+		}
+		if err != nil {
+			t.Fatalf("expected no error loading %s data, got %s", src.prefix, err)
+		}
+	}
+	return ext
+}
+
+var dataSituacaoCadastral = date(time.Date(2004, 5, 22, 0, 0, 0, 0, time.UTC))
+
+func TestMaskCPF(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want string
+	}{
+		// MEI patterns (company name + CPF)
+		{"João Silva 12345678901", "João Silva ***45678***"},
+		{"Maria Santos ME 98765432109", "Maria Santos ME ***65432***"},
+		{"JOSE DA SILVA 11122233344", "JOSE DA SILVA ***22233***"},
+		{"COMERCIO DE ALIMENTOS LTDA 55566677788", "COMERCIO DE ALIMENTOS LTDA ***66677***"},
+		// Edge cases with non-digit before CPF
+		{"Empresa-12345678901", "Empresa-***45678***"},
+		{"Nome 12345678901", "Nome ***45678***"},
+		{"A12345678901", "A***45678***"},
+		// Should NOT mask: 12 consecutive digits (not CPF pattern)
+		{"Empresa123456789012", "Empresa123456789012"},
+		{"000012345678901", "000012345678901"},
+		// Should NOT mask: too short
+		{"1234567890", "1234567890"},
+		{"Short", "Short"},
+		// Should NOT mask: non-digits in tail
+		{"NomeEmpresa1234567890X", "NomeEmpresa1234567890X"},
+		{"Empresa 1234567890a", "Empresa 1234567890a"},
+		{"Test 123456-78901", "Test 123456-78901"},
+		// Exactly 11 chars (all digits)
+		{"12345678901", "***45678***"},
+		// UTF-8 cases
+		{"João José 12345678901", "João José ***45678***"},
+		{"Quitanda São Miguel 99988877766", "Quitanda São Miguel ***88877***"},
+		{"Café é Bom 12312312312", "Café é Bom ***12312***"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := maskCPF(tc.name)
+			if got != tc.want {
+				t.Errorf("expected masked %s to be %s, got %s", tc.name, tc.want, got)
+			}
+		})
+	}
+}
 
 func TestNewCompany(t *testing.T) {
 	row := []string{
-		"33683111",
-		"0002",
-		"80",
-		"2",
-		"REGIONAL BRASILIA-DF 11122233344",
-		"02",
-		"20040522",
-		"00",
-		"",
-		"",
-		"19670630",
-		"6204000",
-		"6201501,6202300,6203100,6209100,6311900",
-		"AVENIDA",
-		"L2 SGAN",
-		"601",
-		"MODULO G",
-		"ASA NORTE",
-		"70836900",
-		"DF",
-		"9701",
-		"",
-		"",
-		"",
-		"",
-		"",
-		"",
-		"serpro@serpro.gov.br",
-		"",
-		"",
+		"33683111",             // 0 CNPJ Base
+		"0002",                 // 1 CNPJ Ordem
+		"80",                   // 2 CNPJ DV
+		"2",                    // 3 Indentificador Matriz/Filial
+		"REGIONAL BRASILIA-DF", // 4 Nome Fantasia
+		"02",                   // 5 Situação Cadastral
+		"20040522",             // 6 Data Situação Cadastral
+		"00",                   // 7 Motivo Situação Cadastral
+		"",                     // 8 Nome da cidade no exterior
+		"",                     // 9 Pais
+		"19670630",             // 10 Data de Início da Ativiade
+		"6204000",              // 11 CNAE Fiscal
+		"6201501,6202300,6203100,6209100,6311900", // 12 CNAEs Secundários
+		"AVENIDA",      // 13 Tipo de Logradouro
+		"L2 SGAN",      // 14 Logradouro
+		"601",          // 15 Número
+		"MODULO G",     // 16 Complemento
+		"ASA NORTE",    // 17 Bairro
+		"70836900",     // 18 CEP
+		"DF",           // 19 UF
+		"9701",         // 20 Município
+		"",             // 21 DDD 1
+		"",             // 22 Telefone 1
+		"",             // 23 DDD 2
+		"",             // 24 Telefone 2
+		"",             // 25 DDD Fax
+		"",             // 26 Fax
+		"test@ser.pro", // 27 Email
+		"",             // 28 Situação Especial
+		"",             // 29 Data Situação Especial
 	}
-
-	identificadorMatrizFilial := 2
-	DescricaoMatrizFilial := "FILIAL"
-	situacaoCadastral := 2
-	descricaoSituacaoCadastral := "ATIVA"
-	dataSituacaoCadastralAsTime, err := time.Parse(dateInputFormat, row[6])
+	kv, err := newBadger(t.TempDir(), false)
 	if err != nil {
-		t.Errorf("error creating DataSituacaoCadastral for expected company: %s", err)
+		t.Fatalf("expected no error creatinh kv, got %s", err)
 	}
-	dataSituacaoCadastral := date(dataSituacaoCadastralAsTime)
-	motivoSituacaoCadastral := 0
-	descricaoMotivoSituacaoCadastral := "SEM MOTIVO"
-	dataInicioAtividadeAsTime, err := time.Parse(dateInputFormat, row[10])
+	defer func() {
+		if err := kv.db.Close(); err != nil {
+			t.Errorf("expected no error closing badger, got %s", err)
+		}
+	}()
+	srcs := sources()
+	loadAllTestSources(t, kv)
+	got, err := newCompany(srcs, kv, row)
 	if err != nil {
-		t.Errorf("error creating DataInicioAtividade for expected company: %s", err)
+		t.Fatalf("expected no error creating a company, got %s", err)
 	}
-	dataInicioAtividade := date(dataInicioAtividadeAsTime)
-	codigoCNAEFiscal := 6204000
-	codigoCNAEFiscalDescricao := "Consultoria em tecnologia da informação"
-	CodigoMunicipio := 9701
-	CodigoMunicipioIBGE := 5300108
-	municipio := "BRASILIA"
-
-	expected := Company{
-		CNPJ:                             "33683111000280",
-		IdentificadorMatrizFilial:        &identificadorMatrizFilial,
-		DescricaoMatrizFilial:            &DescricaoMatrizFilial,
-		NomeFantasia:                     "REGIONAL BRASILIA-DF ***22233***",
-		SituacaoCadastral:                &situacaoCadastral,
-		DescricaoSituacaoCadastral:       &descricaoSituacaoCadastral,
-		DataSituacaoCadastral:            &dataSituacaoCadastral,
-		MotivoSituacaoCadastral:          &motivoSituacaoCadastral,
-		DescricaoMotivoSituacaoCadastral: &descricaoMotivoSituacaoCadastral,
-		NomeCidadeNoExterior:             "",
-		CodigoPais:                       nil,
-		Pais:                             nil,
-		DataInicioAtividade:              &dataInicioAtividade,
-		CNAEFiscal:                       &codigoCNAEFiscal,
-		CNAEFiscalDescricao:              &codigoCNAEFiscalDescricao,
-		DescricaoTipoDeLogradouro:        "AVENIDA",
-		Logradouro:                       "L2 SGAN",
-		Numero:                           "601",
-		Complemento:                      "MODULO G",
-		Bairro:                           "ASA NORTE",
-		CEP:                              "70836900",
-		UF:                               "DF",
-		CodigoMunicipio:                  &CodigoMunicipio,
-		CodigoMunicipioIBGE:              &CodigoMunicipioIBGE,
-		Municipio:                        &municipio,
-		Telefone1:                        "",
-		Telefone2:                        "",
-		Fax:                              "",
-		Email:                            nil,
-		SituacaoEspecial:                 "",
-		DataSituacaoEspecial:             nil,
-		RegimeTributario:                 nil,
-		CNAESecundarios: []CNAE{
-			{Codigo: 6201501, Descricao: "Desenvolvimento de programas de computador sob encomenda"},
-			{Codigo: 6202300, Descricao: "Desenvolvimento e licenciamento de programas de computador customizáveis"},
-			{Codigo: 6203100, Descricao: "Desenvolvimento e licenciamento de programas de computador não-customizáveis"},
-			{Codigo: 6209100, Descricao: "Suporte técnico, manutenção e outros serviços em tecnologia da informação"},
-			{Codigo: 6311900, Descricao: "Tratamento de dados, provedores de serviços de aplicação e serviços de hospedagem na internet"},
-		},
+	if got.CNPJ != "33683111000280" {
+		t.Errorf("expected cnpj to be 33683111000280, got %s", got.CNPJ)
 	}
-
-	t.Run("with privacy", func(t *testing.T) {
-		kv, err := newBadgerStorage(t.TempDir(), false)
-		if err != nil {
-			t.Errorf("expected no error creating badger, got %s", err)
-		}
-		defer func() {
-			if err := kv.close(); err != nil {
-				t.Errorf("expected no error closing key-value storage, got %s", err)
-			}
-		}()
-		lookups, err := newLookups(testdata)
-		if err != nil {
-			t.Errorf("expected no errors creating look up tables, got %v", err)
-		}
-		if err := kv.load(testdata, &lookups, 1024); err != nil {
-			t.Errorf("expected no error loading values to badger, got %s", err)
-		}
-		got, err := newCompany(row, &lookups, kv, true)
-		if err != nil {
-			t.Errorf("expected no errors, got %v", err)
-		}
-		if got.CNPJ != expected.CNPJ {
-			t.Errorf("expected CNPJ to be %s, got %s", expected.CNPJ, got.CNPJ)
-		}
-		if *got.IdentificadorMatrizFilial != *expected.IdentificadorMatrizFilial {
-			t.Errorf(
-				"expected IdentificadorMatrizFilial to be %d, got %d",
-				*expected.IdentificadorMatrizFilial,
-				*got.IdentificadorMatrizFilial,
-			)
-		}
-
-		if *got.DescricaoMatrizFilial != *expected.DescricaoMatrizFilial {
-			t.Errorf(
-				"expected DescricaoMatrizFilial to be %s, got %s",
-				*expected.DescricaoMatrizFilial,
-				*got.DescricaoMatrizFilial,
-			)
-		}
-
-		if got.NomeFantasia != expected.NomeFantasia {
-			t.Errorf("expected NomeFantasia to be %s, got %s", expected.NomeFantasia, got.NomeFantasia)
-		}
-
-		if *got.SituacaoCadastral != *expected.SituacaoCadastral {
-			t.Errorf("expected SituacaoCadastral to be %d, got %d", *expected.SituacaoCadastral, *got.SituacaoCadastral)
-		}
-
-		if *got.DescricaoSituacaoCadastral != *expected.DescricaoSituacaoCadastral {
-			t.Errorf(
-				"expected DescricaoSituacaoCadastral to be %s, got %s",
-				*expected.DescricaoSituacaoCadastral,
-				*got.DescricaoSituacaoCadastral,
-			)
-		}
-
-		if *got.DataSituacaoCadastral != *expected.DataSituacaoCadastral {
-			t.Errorf(
-				"expected DataSituacaoCadastral to be %s, got %s",
-				time.Time(*expected.DataSituacaoCadastral),
-				time.Time(*got.DataSituacaoCadastral),
-			)
-		}
-
-		if *got.MotivoSituacaoCadastral != motivoSituacaoCadastral {
-			t.Errorf("expected MotivoSituacaoCadastral to be %d, got %d", motivoSituacaoCadastral, *got.MotivoSituacaoCadastral)
-		}
-
-		if *got.DescricaoMotivoSituacaoCadastral != *expected.DescricaoMotivoSituacaoCadastral {
-			t.Errorf("expected DescricaoMotivoSituacaoCadastral to be nil, got %s", *got.DescricaoMotivoSituacaoCadastral)
-		}
-
-		if *got.CNAEFiscal != codigoCNAEFiscal {
-			t.Errorf("expected CNAEFiscal to be %d, got %d", codigoCNAEFiscal, *got.CNAEFiscal)
-		}
-
-		if *got.CNAEFiscalDescricao != codigoCNAEFiscalDescricao {
-			t.Errorf("expected CNAEFiscalDescricao to be %s, got %s", codigoCNAEFiscalDescricao, *got.CNAEFiscalDescricao)
-		}
-
-		if got.NomeCidadeNoExterior != expected.NomeCidadeNoExterior {
-			t.Errorf("expected NomeCidadeNoExterior to be %s, got %s", expected.NomeCidadeNoExterior, got.NomeCidadeNoExterior)
-		}
-
-		if got.CodigoPais != nil {
-			t.Errorf("expected CodigoPais to be nil, got %d", *got.CodigoPais)
-		}
-
-		if got.Pais != nil {
-			t.Errorf("expected Pais to be nil, got %s", *got.Pais)
-		}
-
-		if *got.DataInicioAtividade != *expected.DataInicioAtividade {
-			t.Errorf(
-				"expected DataInicioAtividade to be %s, got %s",
-				time.Time(*expected.DataInicioAtividade),
-				time.Time(*got.DataInicioAtividade),
-			)
-		}
-
-		if got.DescricaoTipoDeLogradouro != expected.DescricaoTipoDeLogradouro {
-			t.Errorf("expected DescricaoTipoDeLogradouro to be %s, got %s", expected.DescricaoTipoDeLogradouro, got.DescricaoTipoDeLogradouro)
-		}
-
-		if got.Logradouro != expected.Logradouro {
-			t.Errorf("expected Logradouro to be %s, got %s", expected.Logradouro, got.Logradouro)
-		}
-
-		if got.Numero != expected.Numero {
-			t.Errorf("expected Numero to be %s, got %s", expected.Numero, got.Numero)
-		}
-
-		if got.Complemento != expected.Complemento {
-			t.Errorf("expected Complemento to be %s, got %s", expected.Complemento, got.Complemento)
-		}
-
-		if got.Bairro != expected.Bairro {
-			t.Errorf("expected Bairro to be %s, got %s", expected.Bairro, got.Bairro)
-		}
-
-		if *got.CodigoMunicipio != *expected.CodigoMunicipio {
-			t.Errorf("expected CodigoMunicipio to be %d, got %d", *expected.CodigoMunicipio, *got.CodigoMunicipio)
-		}
-
-		if *got.Municipio != *expected.Municipio {
-			t.Errorf("expected Municipio to be %s, got %s", *expected.Municipio, *got.Municipio)
-		}
-
-		if *got.CodigoMunicipioIBGE != *expected.CodigoMunicipioIBGE {
-			t.Errorf(
-				"expected CodigoMunicipioIBGE to be %d, got %d",
-				*expected.CodigoMunicipioIBGE,
-				*got.CodigoMunicipioIBGE,
-			)
-		}
-
-		if got.CEP != expected.CEP {
-			t.Errorf("expected CEP to be %s, got %s", expected.CEP, got.CEP)
-		}
-
-		if got.UF != expected.UF {
-			t.Errorf("expected UF to be %s, got %s", expected.UF, got.UF)
-		}
-
-		for i, v := range got.CNAESecundarios {
-			if v.Codigo != expected.CNAESecundarios[i].Codigo {
-				t.Errorf("expected CNAESecundarios[%d].Codigo to be %d, got %d", i, expected.CNAESecundarios[i].Codigo, v.Codigo)
-			}
-
-			if v.Descricao != expected.CNAESecundarios[i].Descricao {
-				t.Errorf("expected CNAESecundarios[%d].Descricao to be %s, got %s", i, expected.CNAESecundarios[i].Descricao, v.Descricao)
-			}
-
-		}
-	})
-	t.Run("without privacy", func(t *testing.T) {
-		kv, err := newBadgerStorage(t.TempDir(), false)
-		if err != nil {
-			t.Errorf("expected no error creating badger, got %s", err)
-		}
-		defer func() {
-			if err := kv.close(); err != nil {
-				t.Errorf("expected no error closing key-value storage, got %s", err)
-			}
-		}()
-		lookups, err := newLookups(testdata)
-		if err != nil {
-			t.Errorf("expected no errors creating look up tables, got %v", err)
-		}
-		if err := kv.load(testdata, &lookups, 1024); err != nil {
-			t.Errorf("expected no error loading values to badger, got %s", err)
-		}
-		email := "serpro@serpro.gov.br"
-		expected.Email = &email
-		expected.NomeFantasia = "REGIONAL BRASILIA-DF 11122233344"
-		got, err := newCompany(row, &lookups, kv, false)
-		if err != nil {
-			t.Errorf("expected no errors, got %v", err)
-		}
-		if *got.Email != email {
-			t.Errorf("expected Email to be %s, got %s", email, *got.Email)
-		}
-	})
-}
-
-func TestCompanyJSON(t *testing.T) {
-	dataInicioAtividadeAsTime, err := time.Parse(dateInputFormat, "19670630")
-	if err != nil {
-		t.Errorf("error creating DataInicioAtividade for expected company: %s", err)
+	if *got.IdentificadorMatrizFilial != 2 {
+		t.Errorf("expected IdentificadorMatrizFilial to be 2, got %v", got.IdentificadorMatrizFilial)
 	}
-	dataInicioAtividade := date(dataInicioAtividadeAsTime)
-	c := Company{
-		CNPJ:                 "33683111000280",
-		DataInicioAtividade:  &dataInicioAtividade,
-		DataSituacaoEspecial: nil,
+	if *got.DescricaoMatrizFilial != "FILIAL" {
+		t.Errorf("expected DescricaoMatrizFilial to be FILIAL, got %s", *got.DescricaoMatrizFilial)
 	}
-
-	got, err := c.JSON()
-	if err != nil {
-		t.Errorf("expected no error getting the company %s as json, got %s", cnpj.Mask(c.CNPJ), err)
+	if got.NomeFantasia != "REGIONAL BRASILIA-DF" {
+		t.Errorf("expected NomeFantasia to be REGIONAL BRASILIA-DF, got %s", got.NomeFantasia)
 	}
-	if !strings.Contains(got, `"cnpj":"33683111000280"`) {
-		t.Errorf("expected to find %s in a CNPJ field in %s", c.CNPJ, got)
+	if *got.SituacaoCadastral != 2 {
+		t.Errorf("expected SituacaoCadastral to be 2, got %d", *got.SituacaoCadastral)
 	}
-	if !strings.Contains(got, `"1967-06-30"`) {
-		t.Errorf("expected to find 1967-06-30 in JSON %s", got)
+	if *got.DataSituacaoCadastral != dataSituacaoCadastral {
+		t.Errorf("expected SituacaoCadastral to be %v, got %v", dataSituacaoCadastral, *got.DataSituacaoCadastral)
 	}
-	if !strings.Contains(got, `"data_situacao_especial":null`) {
-		t.Errorf("expected to find null for data_situacao_especial in JSON %s", got)
+	if *got.DescricaoSituacaoCadastral != "ATIVA" {
+		t.Errorf("expected DescricaoSituacaoCadastral to be ATIVA, got %s", *got.DescricaoSituacaoCadastral)
+	}
+	if *got.MotivoSituacaoCadastral != 0 {
+		t.Errorf("expected MotivoSituacaoCadastral to be 0, got %d", *got.MotivoSituacaoCadastral)
+	}
+	if got.DescricaoMotivoSituacaoCadastral == nil || *got.DescricaoMotivoSituacaoCadastral != "SEM MOTIVO" {
+		t.Errorf("expected DescricaoMotivoSituacaoCadastral to be SEM MOTIVO, got %v", got.DescricaoMotivoSituacaoCadastral)
+	}
+	if got.NomeCidadeNoExterior != "" {
+		t.Errorf("expected NomeCidadeNoExterior to be empty, got %s", got.NomeCidadeNoExterior)
+	}
+	if got.CodigoPais != nil {
+		t.Errorf("expected CodigoPais to be nil, got %v", got.CodigoPais)
+	}
+	if *got.DataInicioAtividade != date(time.Date(1967, 6, 30, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("expected DataInicioAtividade to be 1967-06-30, got %v", *got.DataInicioAtividade)
+	}
+	if *got.CNAEFiscal != 6204000 {
+		t.Errorf("expected CNAEFiscal to be 6204000, got %d", *got.CNAEFiscal)
+	}
+	if *got.CNAEFiscalDescricao != "Consultoria em tecnologia da informação" {
+		t.Errorf("expected CNAEFiscalDescricao to be Consultoria em tecnologia da informação, got %s", *got.CNAEFiscalDescricao)
+	}
+	if got.DescricaoTipoDeLogradouro != "AVENIDA" {
+		t.Errorf("expected DescricaoTipoDeLogradouro to be AVENIDA, got %s", got.DescricaoTipoDeLogradouro)
+	}
+	if got.Logradouro != "L2 SGAN" {
+		t.Errorf("expected Logradouro to be L2 SGAN, got %s", got.Logradouro)
+	}
+	if got.Numero != "601" {
+		t.Errorf("expected Numero to be 601, got %s", got.Numero)
+	}
+	if got.Complemento != "MODULO G" {
+		t.Errorf("expected Complemento to be MODULO G, got %s", got.Complemento)
+	}
+	if got.Bairro != "ASA NORTE" {
+		t.Errorf("expected Bairro to be ASA NORTE, got %s", got.Bairro)
+	}
+	if got.CEP != "70836900" {
+		t.Errorf("expected CEP to be 70836900, got %s", got.CEP)
+	}
+	if got.UF != "DF" {
+		t.Errorf("expected UF to be DF, got %s", got.UF)
+	}
+	if *got.CodigoMunicipio != 9701 {
+		t.Errorf("expected CodigoMunicipio to be 9701, got %d", *got.CodigoMunicipio)
+	}
+	if *got.CodigoMunicipioIBGE != 5300108 {
+		t.Errorf("expected CodigoMunicipioIBGE to be 5300108, got %d", *got.CodigoMunicipioIBGE)
+	}
+	if *got.Municipio != "BRASILIA" {
+		t.Errorf("expected Municipio to be BRASILIA, got %s", *got.Municipio)
+	}
+	if got.Telefone1 != "" {
+		t.Errorf("expected Telefone1 to be empty, got %s", got.Telefone1)
+	}
+	if got.Telefone2 != "" {
+		t.Errorf("expected Telefone2 to be empty, got %s", got.Telefone2)
+	}
+	if got.Fax != "" {
+		t.Errorf("expected Fax to be empty, got %s", got.Fax)
+	}
+	if got.Email == nil || *got.Email != "test@ser.pro" {
+		t.Errorf("expected Email to be empty string, got %v", got.Email)
+	}
+	if got.SituacaoEspecial != "" {
+		t.Errorf("expected SituacaoEspecial to be empty, got %s", got.SituacaoEspecial)
+	}
+	if got.DataSituacaoEspecial != nil {
+		t.Errorf("expected DataSituacaoEspecial to be nil, got %v", got.DataSituacaoEspecial)
+	}
+	if len(got.CNAESecundarios) != 5 {
+		t.Errorf("expected CNAESecundarios to have 5 items, got %d", len(got.CNAESecundarios))
+	}
+	if got.RazaoSocial != "SERVICO FEDERAL DE PROCESSAMENTO DE DADOS (SERPRO)" {
+		t.Errorf("expected RazaoSocial to be SERVICO FEDERAL DE PROCESSAMENTO DE DADOS (SERPRO), got %s", got.RazaoSocial)
+	}
+	if *got.CodigoNaturezaJuridica != 2011 {
+		t.Errorf("expected CodigoNaturezaJuridica to be 2011, got %d", *got.CodigoNaturezaJuridica)
+	}
+	if *got.NaturezaJuridica != "Empresa Pública" {
+		t.Errorf("expected NaturezaJuridica to be Empresa Pública, got %s", *got.NaturezaJuridica)
+	}
+	if *got.QualificacaoDoResponsavel != 16 {
+		t.Errorf("expected QualificacaoDoResponsavel to be 16, got %d", *got.QualificacaoDoResponsavel)
+	}
+	if *got.CapitalSocial != 1061004829.23 {
+		t.Errorf("expected CapitalSocial to be 1061004829.23, got %f", *got.CapitalSocial)
+	}
+	if *got.CodigoPorte != 5 {
+		t.Errorf("expected CodigoPorte to be 5, got %d", *got.CodigoPorte)
+	}
+	if *got.Porte != "DEMAIS" {
+		t.Errorf("expected Porte to be DEMAIS, got %s", *got.Porte)
+	}
+	if got.EnteFederativoResponsavel != "" {
+		t.Errorf("expected EnteFederativoResponsavel to be empty, got %s", got.EnteFederativoResponsavel)
+	}
+	if len(got.QuadroSocietario) != 6 {
+		t.Errorf("expected QuadroSocietario to have 6 items, got %d items", len(got.QuadroSocietario))
+	}
+	if len(got.RegimeTributario) != 1 {
+		t.Errorf("expected RegimeTributario to have 1 item, got %d items", len(got.RegimeTributario))
+	}
+	if *got.OpcaoPeloSimples != true {
+		t.Errorf("expected OpcaoPeloSimples to be true, got %v", *got.OpcaoPeloSimples)
+	}
+	if *got.DataOpcaoPeloSimples != date(time.Date(2014, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("expected DataOpcaoPeloSimples to be 2014-01-01, got %v", *got.DataOpcaoPeloSimples)
+	}
+	if got.DataExclusaoDoSimples != nil {
+		t.Errorf("expected DataExclusaoDoSimples to be nil, got %v", got.DataExclusaoDoSimples)
+	}
+	if *got.OpcaoPeloMEI != false {
+		t.Errorf("expected OpcaoPeloMEI to be false, got %v", *got.OpcaoPeloMEI)
+	}
+	if got.DataOpcaoPeloMEI != nil {
+		t.Errorf("expected DataOpcaoPeloMEI to be nil, got %v", got.DataOpcaoPeloMEI)
+	}
+	if got.DataExclusaoDoMEI != nil {
+		t.Errorf("expected DataExclusaoDoMEI to be nil, got %v", got.DataExclusaoDoMEI)
+	}
+	if got.Pais != nil {
+		t.Errorf("expected Pais to be nil, got %v", got.Pais)
+	}
+	if len(got.QuadroSocietario) != 6 {
+		t.Errorf("expected QuadroSocietario to have 6 items, got %d", len(got.QuadroSocietario))
+	}
+	// Partners are sorted alphabetically by name
+	if got.QuadroSocietario[0].NomeSocio != "ANDRE DE CESERO" {
+		t.Errorf("expected first partner to be ANDRE DE CESERO, got %s", got.QuadroSocietario[0].NomeSocio)
+	}
+	if got.QuadroSocietario[0].CNPJCPFDoSocio != "***220050**" {
+		t.Errorf("expected first partner CNPJ/CPF to be ***220050**, got %s", got.QuadroSocietario[0].CNPJCPFDoSocio)
+	}
+	if *got.QuadroSocietario[0].CodigoQualificacaoSocio != 10 {
+		t.Errorf("expected partner qualification code to be 10, got %d", *got.QuadroSocietario[0].CodigoQualificacaoSocio)
+	}
+	if *got.QuadroSocietario[0].QualificaoSocio != "Diretor" {
+		t.Errorf("expected partner qualification to be Diretor, got %s", *got.QuadroSocietario[0].QualificaoSocio)
+	}
+	if *got.QuadroSocietario[0].CodigoFaixaEtaria != 6 {
+		t.Errorf("expected partner age range code to be 6, got %d", *got.QuadroSocietario[0].CodigoFaixaEtaria)
+	}
+	if *got.QuadroSocietario[0].FaixaEtaria != "Entre 51 a 60 anos" {
+		t.Errorf("expected partner age range to be Entre 51 a 60 anos, got %s", *got.QuadroSocietario[0].FaixaEtaria)
+	}
+	if len(got.RegimeTributario) != 1 {
+		t.Errorf("expected RegimeTributario to have 1 item, got %d", len(got.RegimeTributario))
+	}
+	if got.RegimeTributario[0].Ano != 2018 {
+		t.Errorf("expected tax regime year to be 2018, got %d", got.RegimeTributario[0].Ano)
+	}
+	if got.RegimeTributario[0].FormaDeTributação != "LUCRO PRESUMIDO" {
+		t.Errorf("expected tax regime type to be LUCRO PRESUMIDO, got %s", got.RegimeTributario[0].FormaDeTributação)
+	}
+	if got.RegimeTributario[0].QuantidadeDeEscrituracoes != 1 {
+		t.Errorf("expected tax regime quantity to be 1, got %d", got.RegimeTributario[0].QuantidadeDeEscrituracoes)
 	}
 }
 
-func TestCompanyJSONFields(t *testing.T) {
-	got := CompanyJSONFields()
-	exp := []string{
-		"bairro",
-		"capital_social",
-		"cep",
-		"cnae_fiscal",
-		"cnae_fiscal_descricao",
-		"cnaes_secundarios.codigo",
-		"cnaes_secundarios.descricao",
-		"cnpj",
-		"codigo_municipio",
-		"codigo_municipio_ibge",
-		"codigo_natureza_juridica",
-		"codigo_pais",
-		"codigo_porte",
-		"complemento",
-		"data_exclusao_do_mei",
-		"data_exclusao_do_simples",
-		"data_inicio_atividade",
-		"data_opcao_pelo_mei",
-		"data_opcao_pelo_simples",
-		"data_situacao_cadastral",
-		"data_situacao_especial",
-		"ddd_fax",
-		"ddd_telefone_1",
-		"ddd_telefone_2",
-		"descricao_identificador_matriz_filial",
-		"descricao_motivo_situacao_cadastral",
-		"descricao_situacao_cadastral",
-		"descricao_tipo_de_logradouro",
-		"email",
-		"ente_federativo_responsavel",
-		"identificador_matriz_filial",
-		"logradouro",
-		"motivo_situacao_cadastral",
-		"municipio",
-		"natureza_juridica",
-		"nome_cidade_no_exterior",
-		"nome_fantasia",
-		"numero",
-		"opcao_pelo_mei",
-		"opcao_pelo_simples",
-		"pais",
-		"porte",
-		"qsa.cnpj_cpf_do_socio",
-		"qsa.codigo_faixa_etaria",
-		"qsa.codigo_pais",
-		"qsa.codigo_qualificacao_representante_legal",
-		"qsa.codigo_qualificacao_socio",
-		"qsa.cpf_representante_legal",
-		"qsa.data_entrada_sociedade",
-		"qsa.faixa_etaria",
-		"qsa.identificador_de_socio",
-		"qsa.nome_representante_legal",
-		"qsa.nome_socio",
-		"qsa.pais",
-		"qsa.qualificacao_representante_legal",
-		"qsa.qualificacao_socio",
-		"qualificacao_do_responsavel",
-		"razao_social",
-		"regime_tributario.ano",
-		"regime_tributario.cnpj_da_scp",
-		"regime_tributario.forma_de_tributacao",
-		"regime_tributario.quantidade_de_escrituracoes",
-		"situacao_cadastral",
-		"situacao_especial",
-		"uf",
+func TestNewCompanyWithPrivacy(t *testing.T) {
+	kv, err := newBadger(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("expected no error creating kv, got %s", err)
 	}
-	testutils.AssertArraysHaveSameItems(t, got, exp)
+	defer func() {
+		if err := kv.db.Close(); err != nil {
+			t.Errorf("expected no error closing badger, got %s", err)
+		}
+	}()
+	srcs := sources()
+	loadAllTestSources(t, kv)
+	row := []string{
+		"33683111",               // 0 CNPJ Base
+		"0002",                   // 1 CNPJ Ordem
+		"80",                     // 2 CNPJ DV
+		"1",                      // 3 Indentificador Matriz/Filial (MATRIZ)
+		"João Silva 12345678901", // 4 Nome Fantasia with CPF
+		"02",                     // 5 Situação Cadastral
+		"20040522",               // 6 Data Situação Cadastral
+		"00",                     // 7 Motivo Situação Cadastral
+		"",                       // 8 Nome da cidade no exterior
+		"",                       // 9 Pais
+		"19670630",               // 10 Data de Início da Ativiade
+		"6204000",                // 11 CNAE Fiscal
+		"",                       // 12 CNAEs Secundários
+		"RUA",                    // 13 Tipo de Logradouro
+		"L2 SGAN",                // 14 Logradouro
+		"601",                    // 15 Número
+		"MODULO G",               // 16 Complemento
+		"ASA NORTE",              // 17 Bairro
+		"70836900",               // 18 CEP
+		"DF",                     // 19 UF
+		"9701",                   // 20 Município
+		"61",                     // 21 DDD 1
+		"12345678",               // 22 Telefone 1
+		"",                       // 23 DDD 2
+		"87654321",               // 24 Telefone 2
+		"11",                     // 25 DDD Fax
+		"",                       // 26 Fax
+		"test@example.com",       // 27 Email
+		"",                       // 28 Situação Especial
+		"",                       // 29 Data Situação Especial
+	}
+	got, err := newCompany(srcs, kv, row)
+	if err != nil {
+		t.Fatalf("expected no error creating a company, got %s", err)
+	}
+	got.withPrivacy()
+	if got.Email != nil {
+		t.Errorf("expected Email to be nil after privacy, got %v", got.Email)
+	}
+	// SERPRO is a public company (Empresa Pública), not an individual
+	// So address fields should NOT be cleared
+	if got.DescricaoTipoDeLogradouro != "RUA" {
+		t.Errorf("expected DescricaoTipoDeLogradouro to be RUA for public company, got %s", got.DescricaoTipoDeLogradouro)
+	}
+	if got.Logradouro != "L2 SGAN" {
+		t.Errorf("expected Logradouro to be L2 SGAN for public company, got %s", got.Logradouro)
+	}
+	if got.Numero != "601" {
+		t.Errorf("expected Numero to be 601 for public company, got %s", got.Numero)
+	}
+	if got.Complemento != "MODULO G" {
+		t.Errorf("expected Complemento to be MODULO G for public company, got %s", got.Complemento)
+	}
+	if got.Telefone1 != "6112345678" {
+		t.Errorf("expected Telefone1 to be 6112345678 for public company, got %s", got.Telefone1)
+	}
+	if got.Telefone2 != "87654321" {
+		t.Errorf("expected Telefone2 to be 87654321 for public company, got %s", got.Telefone2)
+	}
+	if got.Fax != "11" {
+		t.Errorf("expected Fax to be 11 for public company, got %s", got.Fax)
+	}
+	want := "João Silva ***45678***"
+	if got.NomeFantasia != want {
+		t.Errorf("expected NomeFantasia to be %s after privacy, got %s", want, got.NomeFantasia)
+	}
 }

@@ -15,9 +15,13 @@ Uma mesma pessoa jurídica tem sempre a mesma base, e só varia a ordem (nas fil
 
 ### Dados
 
-O grosso dos dados está nos arquivos CSV de estabelecimentos que tem `Estabelecimentos*` como prefixo, e as linhas desses arquivos tem um número de CNPJ completo como chave.
+Os dados são disponibilizados mensalmente em um arquivo `YYYY-MM.zip` que contém todos os arquivos de dados do CNPJ. O grosso dos dados está nos arquivos CSV de estabelecimentos que tem `Estabelecimentos*` como prefixo, e as linhas desses arquivos tem um número de CNPJ completo como chave.
+
+Os arquivos de regime tributário (`entidades-*.zip`) são distribuídos separadamente.
 
 #### Dados que tem a base do CNPJ (apenas 8 primeiros dígitos do número de CNPJ) como chave
+
+Dentro de `YYYY-MM.zip`:
 
 * Arquivos com o prefixo `Empresas*` tem o básico dos dados, como razão social, natureza jurídica e porte.
 * Arquivos com o prefixo `Socios*` tem informações sobre o quadro societário de cada pessoa jurídica.
@@ -25,11 +29,13 @@ O grosso dos dados está nos arquivos CSV de estabelecimentos que tem `Estabelec
 
 #### Dados que tem o CNPJ completo como chave
 
-* Regime tributário (`Lucro Arbitrado.zip`, `Lucro Presumido.zip`, `Lucro Real.zip` e `Imunes e Isentas.zip`)
+* Regime tributário (`entidades-lucro-arbitrado.zip`, `entidades-lucro-presumido.zip`, `entidades-lucro-real.zip` e `entidades-imunes-e-isentas.zip`)
 
 #### Dados com outras chaves
 
 Na leitura desses arquivos existem campos que contém um código numérico, mas sem descrição do significado (por exemplo, temos o código 9701 para o município de Brasília). Esses arquivos são chamados de tabelas de _look up_:
+
+Dentro de `YYYY-MM.zip`:
 
 * Arquivo `Cnaes.zip` com descrição dos CNAEs
 * Arquivo `Motivos.zip` com descrição dos motivos cadastrais
@@ -37,18 +43,17 @@ Na leitura desses arquivos existem campos que contém um código numérico, mas 
 * Arquivo `Paises.zip` com o nome dos países
 * Arquivo `Naturezas.zip` com o nome da natureza jurídica
 * Arquivo `Qualificacoes.zip` com a descrição da qualificação de cada pessoa do quadro societário
-* Arquivo do Tesouro Nacional com os códigos dos municípios do IBGE
+
+Mais o arquivo do Tesouro Nacional com os códigos dos municípios do IBGE (baixado atutomática e temporariamente durante a execução do ETL).
 
 ## Estratégia de carregamento dos dados
 
-A etapa de transformação dos dados começa criando armazenamentos de chave e valor, com acesso rápido, para completar os dados dos CSVs principais, `Estabelecimentos*`. Isso é feito em memória para os dados que tem outras chaves, e em disco para os dados que tem como chave a base do CNPJ ou o CNPJ completo.
-
-A partir daí, cada linha dos `Estabelecimentos*` é lida, enriquecida com esses pares de chave e valor armazenados anteriormente, e então enviada para o banco de dados.
+A etapa de transformação dos dados acontece em três etapas. Primeiro o arquivo `YYYY-MM.zip` é descomprimido em um diretório temporário. Em seguida, todos os dados relacionais são carregados em um armazenamento de chave e valor em disco. Por último, cada linha dos `Estabelecimentos*` é lida, enriquecida com esses pares de chave e valor, e então enviada para o banco de dados.
 
 ```mermaid
 flowchart
     subgraph RFB ["Receita Federal"]
-        subgraph D ["CNPJ"]
+        subgraph D ["YYYY-MM.zip"]
             Est@{ shape: docs, label: "Estabelecimento*.zip"}
             Emp@{ shape: docs, label: "Empresa*.zip"}
             Soc@{ shape: docs, label: "Socio*.zip"}
@@ -61,10 +66,10 @@ flowchart
             Qua@{ shape: doc, label: "Qualificacoes.zip"}
         end
         subgraph RT ["Regime tributário"]
-            LuA@{ shape: doc, label: "Lucro Arbitrado.zip"}
-            LuP@{ shape: doc, label: "Lucro Presumido.zip"}
-            LuR@{ shape: doc, label: "Lucro Real.zip"}
-            IeI@{ shape: doc, label: "Imunes e Isenta.zip"}
+            LuA@{ shape: doc, label: "entidades-lucro-arbitrado.zip"}
+            LuP@{ shape: doc, label: "entidades-lucro-presumido.zip"}
+            LuR@{ shape: doc, label: "entidades-lucro-real.zip"}
+            IeI@{ shape: doc, label: "entidades-imunes-e-isentas.zip"}
         end
     end
 
@@ -73,14 +78,13 @@ flowchart
     end
 
     subgraph TMP ["Temporário"]
-      Mem@{ shape: db, label: "RAM" }
+      Ext@{ shape: db, label: "Extração" }
       Bad@{ shape: db, label: "Badger" }
     end
 
     ETL1@{ shape: subproc, label: "Etapa 1" }
     ETL2@{ shape: subproc, label: "Etapa 2" }
     ETL3@{ shape: subproc, label: "Etapa 3" }
-    ETL4@{ shape: subproc, label: "Etapa 4" }
     DB@{ shape: db, label: "Banco de dados" }
 
     Cna -->|Lê| ETL1
@@ -89,31 +93,27 @@ flowchart
     Pai -->|Lê| ETL1
     Nat -->|Lê| ETL1
     Qua -->|Lê| ETL1
-    Tab -->|Lê| ETL1
+    Emp -->|Lê| ETL1
+    Soc -->|Lê| ETL1
+    Sim -->|Lê| ETL1
+    Est -->|Lê| ETL1
+    ETL1 -->|Arquivos| Ext
 
-    ETL1 -->|Escreve| Mem
-
-
-    Emp -->|Lê| ETL2
-    Sim -->|Lê| ETL2
-    Soc -->|Lê| ETL2
-    RT  -->|Lê| ETL2
-    Mem -->|Enriquece| ETL2
-
+    Ext -->|Lê| ETL2
+    LuA -->|Lê| ETL2
+    LuP -->|Lê| ETL2
+    LuR -->|Lê| ETL2
+    IeI -->|Lê| ETL2
+    Tab -->|Lê| ETL2
     ETL2 -->|Escreve| Bad
 
-    Est -->|Lê| ETL3
+    Ext -->|Lê Estabelecimentos| ETL3
     Bad -->|Enriquece| ETL3
-
-    ETL3 --> ETL4
-
-    ETL4 -->|JSON| DB
+    ETL3 -->|JSON| DB
 ```
 
-| Etapa | Descricão | Armazenamento |
+| Etapa | Descrição | Armazenamento |
 |:-:|---|---
-| 1 | Armazena pares de chave e valor em memória para os dados de: `Cnaes.zip`, `Motivos.zip`, `Municipios.zip`, `Paises.zip`, `Naturezas.zip`, `Qualificacoes.zip` e códigos dos municípios do IBGE | Em memória |
-| 2 | Armazena pares de chave e valor em disco para os dados de: `Empresas*` (já enriquecidas com dados de `Cnaes.zip`, `Motivos.zip`, `Municipios.zip`, `Paises.zip`, `Naturezas.zip`, `Qualificacoes.zip` e códigos dos municípios do IBGE), `Socios*` (já enriquecidos com pares de chave e valor de `Qualificacoes.zip`), `Simples.zip`, `Lucro Arbitrado.zip`, `Lucro Presumido.zip`, `Lucro Real.zip` e `Imunes e Isentas.zip` | [Badger](https://dgraph.io/docs/badger/) |
-| 3 | Lê os arquivos `Estabelecimentos*` e os enriquece com os dados das etapas anteriores | Em memória |
-| 4 | Converte os dados para JSON e armazena o resultado no banco de dados | Banco de dados |
-
+| 1 | Descomprime `YYYY-MM.zip` em diretório temporário em disco | Disco |
+| 2 | Carrega pares de chave e valor para: `Cnaes.zip`, `Motivos.zip`, `Municipios.zip`, `Paises.zip`, `Naturezas.zip`, `Qualificacoes.zip`, `Empresas*`, `Socios*`, `Simples.zip`, regimes tributários (`entidades-*.zip`) e códigos dos municípios do IBGE | [Badger](https://dgraph.io/docs/badger/) |
+| 3 | Lê os arquivos `Estabelecimentos*`, enriquece com os dados da etapa anterior e salva os resultados no banco de dados | Banco de dados |

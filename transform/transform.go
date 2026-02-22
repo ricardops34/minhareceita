@@ -1,30 +1,44 @@
 package transform
 
 import (
+	"context"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
-	"codeberg.org/cuducos/minha-receita/download"
+	"github.com/schollz/progressbar/v3"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
-	// MaxParallelDBQueries is the default for maximum number of parallels save
-	// queries sent to the database
-	MaxParallelDBQueries = 8
-
-	// MaxParallelKVWrites is the default for maximum number of parallels
-	// writes on the key-value storage (Badger)
-	MaxParallelKVWrites = 1024
-
 	// BatchSize determines the size of the batches used to create the initial JSON
 	// data in the database.
 	BatchSize = 8192
+
+	// MaxParallelDBQueries is the default for maximum number of parallels save
+	// queries sent to the database
+	MaxParallelDBQueries = 8
 )
 
-var extraIdexes = [...]string{
+var validIndexName = regexp.MustCompile(`^[a-z_.]+$`)
+
+// ValidateIndexes checks that the given index names are valid JSON field paths
+// (only lowercase letters, underscores, and dots).
+func ValidateIndexes(idxs []string) error {
+	for _, idx := range idxs {
+		if !validIndexName.MatchString(idx) {
+			return fmt.Errorf("invalid index name %q: only lowercase letters, underscores and dots are allowed", idx)
+		}
+	}
+	return nil
+}
+
+var extraIndexes = [...]string{
 	"cnae_fiscal",
 	"cnaes_secundarios.codigo",
 	"codigo_municipio",
@@ -32,6 +46,37 @@ var extraIdexes = [...]string{
 	"codigo_natureza_juridica",
 	"qsa.cnpj_cpf_do_socio",
 	"uf",
+}
+
+// In Oct. 2025 the Federal Revenue started using the country code 367. which is
+// not present in Paises.zip. The issue was officially reported to them via
+// Fala.BR. They replied but did not seem to care about updating the dataset.
+//
+// It seems safe to assume this is England:
+// 1. Other official documents from the institution uses 367 for England, eg.:
+// https://balanca.economia.gov.br/balanca/bd/tabelas/PAIS.csv or
+// https://www.cenofisco.com.br/arquivos/BDFlash/IR_IN_RFB_1076.pdf
+// 2. Paises.zip contains a CSV ordered by country name and “Inglaterra” would
+// match this ordering
+//
+// The same logic was used to other unmatched country codes:
+var extraCounties = map[int]string{
+	15:  "Aland, Ilhas",
+	150: "Canal, Ilhas do (Guernsey)",
+	151: "Canárias, Ilhas",
+	200: "Curaçao",
+	321: "Guernsey",
+	359: "Ilha de Man",
+	367: "Inglaterra",
+	393: "Jersey",
+	449: "Macedônia",
+	452: "Madeira, Ilha da",
+	498: "Montenegro",
+	578: "Palestina",
+	678: "Saint Kitts e Nevis",
+	699: "Sint Maarten",
+	737: "Sérvia",
+	994: "A Designar",
 }
 
 type database interface {
@@ -42,57 +87,48 @@ type database interface {
 	MetaSave(string, string) error
 }
 
-type kvStorage interface {
-	load(string, *lookups, int) error
-	enrichCompany(*Company) error
-	close() error
+func sources() map[string]*source { // all but Estabelecimentos (this one is loaded later on)
+	srcs := []*source{
+		newCompanySrc("Cnaes", ';', false, false),
+		newCompanySrc("Empresas", ';', false, false),
+		newTaxSrc("Imunes e Isentas", "entidades-imunes-e-isentas", ';', false, true),
+		newTaxSrc("Lucro Arbitrado", "entidades-lucro-arbitrado", ',', true, true),
+		newTaxSrc("Lucro Presumido", "entidades-lucro-presumido", ';', false, true),
+		newTaxSrc("Lucro Real", "entidades-lucro-real", ',', true, true),
+		newCompanySrc("Motivos", ';', false, false),
+		newCompanySrc("Municipios", ';', false, false),
+		newCompanySrc("Naturezas", ';', false, false),
+		newCompanySrc("Paises", ';', false, false),
+		newCompanySrc("Qualificacoes", ';', false, false),
+		newCompanySrc("Simples", ';', false, false),
+		newCompanySrc("Socios", ';', false, true),
+		newIBGESrc("tabmun", ';', false, false),
+	}
+	m := make(map[string]*source)
+	for _, src := range srcs {
+		m[src.key] = src
+	}
+	return m
 }
 
-func saveUpdatedAt(db database, dir string) error {
+func newProgressBar(label string, srcs int) (*progressbar.ProgressBar, error) {
+	bar := progressbar.NewOptions(
+		srcs, // it has a bug starting At zero, so we compensate for it later
+		progressbar.OptionFullWidth(),
+		progressbar.OptionSetDescription(label),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionShowCount(),
+		progressbar.OptionShowElapsedTimeOnFinish(),
+		progressbar.OptionShowTotalBytes(true),
+		progressbar.OptionUseANSICodes(true),
+		progressbar.OptionOnCompletion(func() { fmt.Println() }),
+	)
+	return bar, bar.RenderBlank()
+}
+
+func saveUpdatedAt(db database, date string) error {
 	slog.Info("Saving the updated at date to the database…")
-	p := filepath.Join(dir, download.FederalRevenueUpdatedAt)
-	v, err := os.ReadFile(p)
-	if err != nil {
-		return fmt.Errorf("error reading %s: %w", p, err)
-
-	}
-	return db.MetaSave("updated-at", string(v))
-}
-
-func createKeyValueStorage(dir string, pth string, l lookups, maxKV int) (err error) { // using named return so we can set it in the defer call
-	kv, err := newBadgerStorage(pth, false)
-	if err != nil {
-		return fmt.Errorf("could not create badger storage: %w", err)
-	}
-	defer func() {
-		if e := kv.close(); e != nil && err == nil {
-			err = fmt.Errorf("could not close key/value storage: %w", e)
-		}
-	}()
-	if err := kv.load(dir, &l, maxKV); err != nil {
-		return fmt.Errorf("error loading data to badger: %w", err)
-	}
-	return nil
-}
-
-func createJSONs(dir string, pth string, db database, l lookups, maxDB, batchSize int, privacy bool) error {
-	kv, err := newBadgerStorage(pth, true)
-	if err != nil {
-		return fmt.Errorf("could not create badger storage: %w", err)
-	}
-	defer func() {
-		if err := kv.close(); err != nil {
-			slog.Warn("could not close key-value storage", "path", pth, "error", err)
-		}
-	}()
-	j, err := createJSONRecordsTask(dir, db, &l, kv, batchSize, privacy)
-	if err != nil {
-		return fmt.Errorf("error creating new task for venues in %s: %w", dir, err)
-	}
-	if err := j.run(maxDB); err != nil {
-		return fmt.Errorf("error writing venues to database: %w", err)
-	}
-	return saveUpdatedAt(db, dir)
+	return db.MetaSave("updated-at", date)
 }
 
 func postLoad(db database) error {
@@ -102,34 +138,115 @@ func postLoad(db database) error {
 	}
 	slog.Info("Database consolidated!")
 	slog.Info("Creating indexes…")
-	if err := db.CreateExtraIndexes(extraIdexes[:]); err != nil {
+	if err := db.CreateExtraIndexes(extraIndexes[:]); err != nil {
 		return err
 	}
 	slog.Info("Indexes created!")
 	return nil
 }
 
-// Transform the downloaded files for company venues creating a database record
-// per CNPJ
-func Transform(dir string, db database, maxDB, maxKV, s int, p bool) error {
-	pth, err := os.MkdirTemp("", fmt.Sprintf("minha-receita-%s-*", time.Now().Format("20060102150405")))
+func Transform(dir string, db database, batch, maxDB int, privacy bool) error {
+	ibgeMunicipalitiesURL, err := ibgeMunicipalitiesURL()
 	if err != nil {
-		return fmt.Errorf("error creating temporary key-value storage: %w", err)
+		return fmt.Errorf("could not discover ibge municipalities URL: %w", err)
+	}
+	return transform(dir, db, batch, maxDB, privacy, ibgeMunicipalitiesURL)
+}
+
+func transform(dir string, db database, batch, maxDB int, privacy bool, ibgeMunicipalitiesURL string) error {
+	if err := db.PreLoad(); err != nil {
+		return err
+	}
+	srcs := sources()
+	pth, err := findMainZIP(dir)
+	if err != nil {
+		return fmt.Errorf("could not find main zip file in %s: %w", dir, err)
+	}
+	tmp, err := os.MkdirTemp("", fmt.Sprintf("minha-receita-%s-*", time.Now().Format("20060102150405")))
+	if err != nil {
+		return fmt.Errorf("could not create temporary directory: %w", err)
 	}
 	defer func() {
-		if err := os.RemoveAll(pth); err != nil {
-			slog.Error("could not remove temporary", "directory", pth, "error", err)
+		if err := os.RemoveAll(tmp); err != nil {
+			slog.Warn("could not remove temporary directory", "path", tmp, "error", err)
 		}
 	}()
-	l, err := newLookups(dir)
+	ext := filepath.Join(tmp, "extracted")
+	if err := os.Mkdir(ext, 0700); err != nil {
+		return fmt.Errorf("could not create extraction directory: %w", err)
+	}
+	bar, err := newProgressBar("[Step 1 of 3] Extracting main archive", 1)
 	if err != nil {
-		return fmt.Errorf("error creating look up tables from %s: %w", dir, err)
+		return fmt.Errorf("could not create a progress bar: %w", err)
 	}
-	if err := createKeyValueStorage(dir, pth, l, 1024); err != nil {
+	if err := unzipMainArchive(pth, ext, bar); err != nil {
+		return fmt.Errorf("could not extract %s: %w", pth, err)
+	}
+	kv, err := newBadger(tmp, false)
+	if err != nil {
+		return fmt.Errorf("could not create badger database: %w", err)
+	}
+	defer func() {
+		if err := kv.db.Close(); err != nil {
+			slog.Warn("could not close badger database", "error", err)
+		}
+	}()
+	bar, err = newProgressBar("[Step 2 of 3] Loading data to key-value storage", len(srcs))
+	if err != nil {
+		return fmt.Errorf("could not create a progress bar: %w", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var g errgroup.Group
+	for _, src := range srcs {
+		g.Go(func() error {
+			switch src.kind {
+			case CompanySrc:
+				return loadCSVs(ctx, ext, src, bar, kv, true)
+			case TaxSrc:
+				return loadCSVs(ctx, dir, src, bar, kv, false)
+			case IBGESrc:
+				return loadIBGEMunicipalitiesFromURL(ctx, ibgeMunicipalitiesURL, src, bar, kv)
+			}
+			return fmt.Errorf("unknown source kind %d for %s", src.kind, src.prefix)
+		})
+	}
+	for k, v := range extraCounties {
+		g.Go(func() error {
+			return kv.put(srcs["pai"], fmt.Sprintf("%d", k), []string{v})
+		})
+	}
+	if err := g.Wait(); err != nil {
 		return err
 	}
-	if err := createJSONs(dir, pth, db, l, maxDB, s, p); err != nil {
+	if err := writeJSONs(ctx, srcs, kv, db, maxDB, batch, ext, privacy); err != nil {
 		return err
 	}
-	return postLoad(db)
+	if err := postLoad(db); err != nil {
+		return err
+	}
+	return saveUpdatedAt(db, strings.TrimSuffix(filepath.Base(pth), ".zip"))
+}
+
+func Cleanup() error {
+	return filepath.WalkDir(os.TempDir(), func(pth string, d fs.DirEntry, err error) error {
+		if !d.IsDir() {
+			return nil
+		}
+		if !strings.HasPrefix(d.Name(), "minha-receita-") {
+			return nil
+		}
+		part := strings.Split(d.Name(), "-")
+		if len(part) != 4 {
+			return nil
+		}
+		if _, err := time.Parse("20060102150405", part[2]); err != nil {
+			return nil
+		}
+		fmt.Printf("Removing %s\n", pth)
+		if err := os.RemoveAll(pth); err != nil {
+			return err
+		}
+		return fs.SkipDir
+	})
 }

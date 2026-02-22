@@ -14,7 +14,6 @@ number of lines, allowing us to manually test the process quicker.`
 var (
 	maxLines  int
 	targetDir string
-	updatedAt string
 )
 
 var sampleCmd = &cobra.Command{
@@ -22,10 +21,7 @@ var sampleCmd = &cobra.Command{
 	Short: "Creates sample data of the source files from the Federal Revenue",
 	Long:  sampleHelper,
 	RunE: func(_ *cobra.Command, _ []string) error {
-		if err := assertDirExists(); err != nil {
-			return err
-		}
-		return sample.Sample(dir, targetDir, maxLines, updatedAt)
+		return sample.Sample(dir, targetDir, maxLines)
 	},
 }
 
@@ -38,13 +34,6 @@ func sampleCLI() *cobra.Command {
 		"t",
 		filepath.Join(defaultDataDir, sample.DefaultTargetDir),
 		"directory for the sample CSV files",
-	)
-	sampleCmd.Flags().StringVarP(
-		&updatedAt,
-		"updated-at",
-		"u",
-		"",
-		"updated at date to be used if the data directory does not have a updated_at.txt file, format YYYY-MM-DD",
 	)
 
 	return sampleCmd

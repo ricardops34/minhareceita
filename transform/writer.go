@@ -1,4 +1,4 @@
-package transformnext
+package transform
 
 import (
 	"archive/zip"
@@ -42,19 +42,15 @@ func worker(ctx context.Context, db database, s int, ch <-chan []string) error {
 	}
 }
 
-func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db database, maxDB, batch int, dir string, privacy bool) error { // TODO: test
-	bar, err := newProgressBar("[Step 2 of 2] Writing JSONs", 1)
+func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db database, maxDB, batch int, ext string, privacy bool) error { // TODO: test
+	bar, err := newProgressBar("[Step 3 of 3] Writing JSONs", 1)
 	if err != nil {
 		return fmt.Errorf("could not create a progress bar: %w", err)
 	}
 	defer func() {
 		bar.AddMax(-1) // compensate for the extra byte added when creating the bar
 	}()
-	pths, err := os.ReadDir(dir)
-	if err != nil {
-		return fmt.Errorf("could not read directory %s: %w", dir, err)
-	}
-	src := newSource("Estabelecimentos", ';', false, false)
+	src := newCompanySrc("Estabelecimentos", ';', false, false)
 	buf := &sync.Pool{
 		New: func() any {
 			return &bytes.Buffer{}
@@ -67,29 +63,32 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 			return worker(ctx, db, batch, ch)
 		})
 	}
+	pths, err := os.ReadDir(ext)
+	if err != nil {
+		return fmt.Errorf("could not read directory %s: %w", ext, err)
+	}
 	var producers errgroup.Group
 	for _, pth := range pths {
-		if !strings.HasPrefix(pth.Name(), src.prefix) {
+		if !strings.HasPrefix(pth.Name(), src.prefix) || filepath.Ext(pth.Name()) != ".zip" {
 			continue
 		}
 		p := pth
 		producers.Go(func() error {
-			pth := filepath.Join(dir, p.Name())
+			pth := filepath.Join(ext, p.Name())
 			a, err := zip.OpenReader(pth)
 			if err != nil {
-				return fmt.Errorf("could not open archive %s: %w", pth, err)
+				return fmt.Errorf("could not open %s: %w", pth, err)
 			}
 			defer func() {
 				if err := a.Close(); err != nil {
-					slog.Warn("could not close %s reader", "path", pth, "error", err)
+					slog.Warn("could not close archive", "path", pth, "error", err)
 				}
 			}()
 			var g errgroup.Group
 			for _, z := range a.File {
 				g.Go(func() error {
 					bar.AddMax64(int64(z.UncompressedSize64))
-					st := z.FileInfo()
-					if st.IsDir() {
+					if z.FileInfo().IsDir() {
 						return nil
 					}
 					f, err := z.Open()
@@ -146,14 +145,20 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 					}
 				})
 			}
-			return g.Wait()
+			if err := g.Wait(); err != nil {
+				return err
+			}
+			if e := os.Remove(pth); e != nil {
+				slog.Warn("could not remove", "path", pth, "error", e)
+			}
+			return nil
 		})
 	}
 	err1 := producers.Wait()
 	close(ch)
 	err2 := consumers.Wait()
 	if err1 != nil && err2 != nil {
-		return fmt.Errorf("errors writing json: (producer error) %w, (connsumer error) %w", err1, err2)
+		return fmt.Errorf("errors writing json: (producer error) %w, (consumer error) %w", err1, err2)
 	}
 	if err1 != nil {
 		return err1

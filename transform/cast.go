@@ -1,16 +1,3 @@
-// Package transform includes these cast functions to allow the project to
-// accomplish two things:
-//
-//   - convert strings from the CSV files to other formats (e.g. int, float32,
-//     time.Time);
-//   - differentiate empty values (such as 0 for int) from missing values.
-//
-// This is achieved using pointers, so we have nil as a marker for missing
-// value.
-//
-// Since our use case involves serving this data in JSON format, this is crucial
-// so we can use `null` when there is no value, and "0" when the value of an
-// integer, for example, is 0.
 package transform
 
 import (
