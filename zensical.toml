@@ -1,0 +1,44 @@
+[project]
+site_name = "Minha Receita"
+repo_url = "https://codeberg.org/cuducos/minha-receita"
+edit_uri = "edit/main/docs/"
+docs_dir = "docs"
+site_dir = "site"
+nav = [
+  "index.md",
+  "como-usar.md",
+  "dicionario.md",
+  "instalacao.md",
+  "servidor.md",
+  "sobre-os-dados.md",
+  {"Guia de Contribuição" = [
+    "contributing/index.md",
+    "contributing/docker.md",
+    "contributing/dados.md",
+    "contributing/etl.md",
+    "contributing/documentacao.md",
+  ]},
+  "faq.md",
+]
+
+[project.theme]
+language = "pt"
+logo = "favicon.svg"
+favicon = "favicon.svg"
+features = [
+  "navigation.instant",
+  "toc.integrate",
+]
+
+[project.theme.palette]
+primary = "deep purple"
+accent = "purple"
+
+[project.theme.icon]
+repo = "fontawesome/brands/git"
+
+[project.markdown_extensions.admonition]
+
+[project.markdown_extensions.pymdownx.details]
+
+[project.markdown_extensions.pymdownx.superfences]
