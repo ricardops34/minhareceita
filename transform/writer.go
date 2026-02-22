@@ -56,7 +56,7 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 			return &bytes.Buffer{}
 		},
 	}
-	ch := make(chan []string)
+	ch := make(chan []string, batch*maxDB)
 	var consumers errgroup.Group
 	for range maxDB {
 		consumers.Go(func() error {

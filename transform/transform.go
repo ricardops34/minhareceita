@@ -18,11 +18,11 @@ import (
 const (
 	// BatchSize determines the size of the batches used to create the initial JSON
 	// data in the database.
-	BatchSize = 8192
+	BatchSize = 65536
 
 	// MaxParallelDBQueries is the default for maximum number of parallels save
 	// queries sent to the database
-	MaxParallelDBQueries = 8
+	MaxParallelDBQueries = 16
 )
 
 var validIndexName = regexp.MustCompile(`^[a-z_.]+$`)
