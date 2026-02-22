@@ -7,8 +7,8 @@ when:
 
 steps:
   build:
-    image: zensical/zensical
-    commands: zensical build
+    image: ghcr.io/astral-sh/uv:python3.13-trixie
+    commands: uvx zensical build
   deploy:
     image: amazon/aws-cli
     environment:
