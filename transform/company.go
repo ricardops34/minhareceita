@@ -7,8 +7,6 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
-
-	"golang.org/x/sync/errgroup"
 )
 
 func maskCPF(name string) string {
@@ -139,7 +137,6 @@ func (c *Company) JSON(p *sync.Pool) (string, error) {
 func newCompany(srcs map[string]*source, kv *kv, row []string) (*Company, error) {
 	var c Company
 	var err error
-	var g errgroup.Group
 	c.CNPJ = strings.Join(row[:3], "")
 	c.IdentificadorMatrizFilial, err = toInt(row[3])
 	if err != nil {
@@ -164,27 +161,19 @@ func newCompany(srcs map[string]*source, kv *kv, row []string) (*Company, error)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse MotivoSituacaoCadastral for %s: %w", c.CNPJ, err)
 	}
-	g.Go(func() error {
-		var err error
-		c.DescricaoMotivoSituacaoCadastral, err = stringFromKV(srcs, kv, "mot", row[7], 0)
-		if err != nil {
-			slog.Warn("unknown MotivoSituacaoCadastral", "code", row[7], "cnpj", c.CNPJ)
-		}
-		return nil
-	})
+	c.DescricaoMotivoSituacaoCadastral, err = stringFromKV(srcs, kv, "mot", row[7], 0)
+	if err != nil {
+		slog.Warn("unknown MotivoSituacaoCadastral", "code", row[7], "cnpj", c.CNPJ)
+	}
 	c.NomeCidadeNoExterior = row[8]
 	c.CodigoPais, err = toInt(row[9])
 	if err != nil {
 		return nil, fmt.Errorf("could not parse CodigoPais for %s: %w", c.CNPJ, err)
 	}
-	g.Go(func() error {
-		var err error
-		c.Pais, err = stringFromKV(srcs, kv, "pai", row[9], 0)
-		if err != nil {
-			slog.Warn("unknown CodigoPais", "code", row[9], "cnpj", c.CNPJ)
-		}
-		return nil
-	})
+	c.Pais, err = stringFromKV(srcs, kv, "pai", row[9], 0)
+	if err != nil {
+		slog.Warn("unknown CodigoPais", "code", row[9], "cnpj", c.CNPJ)
+	}
 	c.DataInicioAtividade, err = toDate(row[10])
 	if err != nil {
 		return nil, fmt.Errorf("could not parse DataInicioAtividade for %s: %w", c.CNPJ, err)
@@ -193,14 +182,10 @@ func newCompany(srcs map[string]*source, kv *kv, row []string) (*Company, error)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse CNAEFiscal for %s: %w", c.CNPJ, err)
 	}
-	g.Go(func() error {
-		var err error
-		c.CNAEFiscalDescricao, err = stringFromKV(srcs, kv, "cna", row[11], 0)
-		if err != nil {
-			return fmt.Errorf("could not parse CNAEFiscalDescricao for %s: %w", c.CNPJ, err)
-		}
-		return nil
-	})
+	c.CNAEFiscalDescricao, err = stringFromKV(srcs, kv, "cna", row[11], 0)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse CNAEFiscalDescricao for %s: %w", c.CNPJ, err)
+	}
 	c.DescricaoTipoDeLogradouro = row[13]
 	c.Logradouro = row[14]
 	c.Numero = row[15]
@@ -213,28 +198,20 @@ func newCompany(srcs map[string]*source, kv *kv, row []string) (*Company, error)
 		return nil, fmt.Errorf("could not parse CodigoMunicipio for %s: %w", c.CNPJ, err)
 	}
 	if c.CodigoMunicipio != nil && *c.CodigoMunicipio != 9707 { // overseas city code
-		g.Go(func() error {
-			ibge, err := stringFromKV(srcs, kv, "tab", row[20], 3)
-			if err != nil {
-				slog.Warn("unknown CodigoMunicipioIBGE", "code", row[20], "cnpj", c.CNPJ)
-				return nil
-			}
+		ibge, err := stringFromKV(srcs, kv, "tab", row[20], 3)
+		if err != nil {
+			slog.Warn("unknown CodigoMunicipioIBGE", "code", row[20], "cnpj", c.CNPJ)
+		} else {
 			c.CodigoMunicipioIBGE, err = toInt(*ibge)
 			if err != nil {
-				return fmt.Errorf("could not parse CodigoMunicipioIBGE number for %s: %w", c.CNPJ, err)
+				return nil, fmt.Errorf("could not parse CodigoMunicipioIBGE number for %s: %w", c.CNPJ, err)
 			}
-			return nil
-		})
-	}
-	g.Go(func() error {
-		var err error
-		c.Municipio, err = stringFromKV(srcs, kv, "mun", row[20], 0)
-		if err != nil {
-			slog.Warn("unknown Municipio", "code", row[20], "cnpj", c.CNPJ)
-			return nil
 		}
-		return nil
-	})
+	}
+	c.Municipio, err = stringFromKV(srcs, kv, "mun", row[20], 0)
+	if err != nil {
+		slog.Warn("unknown Municipio", "code", row[20], "cnpj", c.CNPJ)
+	}
 	c.Telefone1 = row[21] + row[22]
 	c.Telefone2 = row[23] + row[24]
 	c.Fax = row[25] + row[26]
@@ -244,12 +221,19 @@ func newCompany(srcs map[string]*source, kv *kv, row []string) (*Company, error)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse DataSituacaoEspecial for %s: %w", c.CNPJ, err)
 	}
-	g.Go(func() error { return c.base(srcs, kv) })
-	g.Go(func() error { return c.simples(srcs, kv) })
-	g.Go(func() error { return c.cnaes(srcs, kv, row[12]) })
-	g.Go(func() error { return c.partners(srcs, kv) })
-	g.Go(func() error { return c.taxes(srcs, kv) })
-	if err := g.Wait(); err != nil {
+	if err := c.base(srcs, kv); err != nil {
+		return nil, err
+	}
+	if err := c.simples(srcs, kv); err != nil {
+		return nil, err
+	}
+	if err := c.cnaes(srcs, kv, row[12]); err != nil {
+		return nil, err
+	}
+	if err := c.partners(srcs, kv); err != nil {
+		return nil, err
+	}
+	if err := c.taxes(srcs, kv); err != nil {
 		return nil, err
 	}
 	return &c, nil

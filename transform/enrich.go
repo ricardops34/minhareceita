@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/dgraph-io/badger/v4"
-	"golang.org/x/sync/errgroup"
 )
 
 func stringsFromKV(srcs map[string]*source, kv *kv, prefix string, id string) ([]string, error) {
@@ -118,36 +117,21 @@ func (c *Company) simples(srcs map[string]*source, kv *kv) error {
 }
 
 func (c *Company) cnaes(srcs map[string]*source, kv *kv, codes string) error {
-	ch := make(chan CNAE)
-	done := make(chan struct{}, 1)
-	var g errgroup.Group
 	for code := range strings.SplitSeq(codes, ",") {
-		g.Go(func() error {
-			d, err := stringFromKV(srcs, kv, "cna", code, 0)
-			if err != nil {
-				return err
-			}
-			if d == nil {
-				return nil
-			}
-			n, err := toInt(code)
-			if err != nil {
-				return fmt.Errorf("could not parse CNAESecundarios for %s: %w", c.CNPJ, err)
-			}
-			ch <- CNAE{*n, *d}
-			return nil
-		})
-	}
-	go func() {
-		for p := range ch {
-			c.CNAESecundarios = append(c.CNAESecundarios, p)
+		d, err := stringFromKV(srcs, kv, "cna", code, 0)
+		if err != nil {
+			return err
 		}
-		done <- struct{}{}
-	}()
-	err := g.Wait()
-	close(ch)
-	<-done
-	return err
+		if d == nil {
+			continue
+		}
+		n, err := toInt(code)
+		if err != nil {
+			return fmt.Errorf("could not parse CNAESecundarios for %s: %w", c.CNPJ, err)
+		}
+		c.CNAESecundarios = append(c.CNAESecundarios, CNAE{*n, *d})
+	}
+	return nil
 }
 
 func (c *Company) partners(srcs map[string]*source, kv *kv) error {
@@ -163,154 +147,124 @@ func (c *Company) partners(srcs map[string]*source, kv *kv) error {
 		}
 		return fmt.Errorf("could not find %s", string(k))
 	}
-	ch := make(chan Partner)
-	done := make(chan struct{}, 1)
-	var g errgroup.Group
 	for _, row := range rows {
-		g.Go(func() error {
-			var p Partner
-			var err error
-			p.IdentificadorDeSocio, err = toInt(row[0])
-			if err != nil {
-				return fmt.Errorf("could not parse IdentificadorDeSocio for %s: %w", c.CNPJ, err)
-			}
-			p.NomeSocio = row[1]
-			p.CNPJCPFDoSocio = row[2]
-			p.CodigoQualificacaoSocio, err = toInt(row[3])
-			if err != nil {
-				return fmt.Errorf("could not parse CodigoQualificacaoSocio for %s: %w", c.CNPJ, err)
-			}
-			p.QualificaoSocio, err = stringFromKV(srcs, kv, "qua", row[3], 0)
-			if err != nil {
-				return fmt.Errorf("could not parse QualificaoSocio for %s: %w", c.CNPJ, err)
-			}
-			p.DataEntradaSociedade, err = toDate(row[4])
-			if err != nil {
-				return fmt.Errorf("could not parse DataEntradaSociedade for %s: %w", c.CNPJ, err)
-			}
-			p.CodigoPais, err = toInt(row[5])
-			if err != nil {
-				return fmt.Errorf("could not parse CodigoPais for %s: %w", c.CNPJ, err)
-			}
-			p.Pais, err = stringFromKV(srcs, kv, "pai", row[5], 0)
-			if err != nil {
-				slog.Warn("unknown Pais", "code", row[5], "cnpj", c.CNPJ)
-			}
-			p.CPFRepresentanteLegal = row[6]
-			p.NomeRepresentanteLegal = row[7]
-			p.CodigoQualificacaoRepresentanteLegal, err = toInt(row[8])
-			if err != nil {
-				return fmt.Errorf("could not parse CodigoQualificacaoRepresentanteLegal for %s: %w", c.CNPJ, err)
-			}
-			p.QualificacaoRepresentanteLegal, err = stringFromKV(srcs, kv, "qua", row[8], 0)
-			if err != nil {
-				return fmt.Errorf("could not parse QualificacaoRepresentanteLegal for %s: %w", c.CNPJ, err)
-			}
-			p.CodigoFaixaEtaria, err = toInt(row[9])
-			if err != nil {
-				return fmt.Errorf("could not parse CodigoFaixaEtaria for %s: %w", c.CNPJ, err)
-			}
-			if p.CodigoFaixaEtaria != nil {
-				var f string
-				switch *p.CodigoFaixaEtaria {
-				case 1:
-					f = "Entre 0 a 12 anos"
-				case 2:
-					f = "Entre 13 a 20 ano"
-				case 3:
-					f = "Entre 21 a 30 anos"
-				case 4:
-					f = "Entre 31 a 40 anos"
-				case 5:
-					f = "Entre 41 a 50 anos"
-				case 6:
-					f = "Entre 51 a 60 anos"
-				case 7:
-					f = "Entre 61 a 70 anos"
-				case 8:
-					f = "Entre 71 a 80 anos"
-				case 9:
-					f = "Maiores de 80 anos"
-				case 0:
-					f = "Não se aplica"
-				default:
-					slog.Error("unknown CodigoFaixaEtaria", "value", *p.CodigoFaixaEtaria, "cnpj", c.CNPJ)
-				}
-				if f != "" {
-					p.FaixaEtaria = &f
-				}
-			}
-			ch <- p
-			return nil
-		})
-	}
-	go func() {
-		for p := range ch {
-			c.QuadroSocietario = append(c.QuadroSocietario, p)
+		var p Partner
+		var err error
+		p.IdentificadorDeSocio, err = toInt(row[0])
+		if err != nil {
+			return fmt.Errorf("could not parse IdentificadorDeSocio for %s: %w", c.CNPJ, err)
 		}
-		sort.Slice(c.QuadroSocietario, func(i, j int) bool {
-			return c.QuadroSocietario[i].NomeSocio < c.QuadroSocietario[j].NomeSocio
-		})
-		done <- struct{}{}
-	}()
-	err = g.Wait()
-	close(ch)
-	<-done
-	return err
+		p.NomeSocio = row[1]
+		p.CNPJCPFDoSocio = row[2]
+		p.CodigoQualificacaoSocio, err = toInt(row[3])
+		if err != nil {
+			return fmt.Errorf("could not parse CodigoQualificacaoSocio for %s: %w", c.CNPJ, err)
+		}
+		p.QualificaoSocio, err = stringFromKV(srcs, kv, "qua", row[3], 0)
+		if err != nil {
+			return fmt.Errorf("could not parse QualificaoSocio for %s: %w", c.CNPJ, err)
+		}
+		p.DataEntradaSociedade, err = toDate(row[4])
+		if err != nil {
+			return fmt.Errorf("could not parse DataEntradaSociedade for %s: %w", c.CNPJ, err)
+		}
+		p.CodigoPais, err = toInt(row[5])
+		if err != nil {
+			return fmt.Errorf("could not parse CodigoPais for %s: %w", c.CNPJ, err)
+		}
+		p.Pais, err = stringFromKV(srcs, kv, "pai", row[5], 0)
+		if err != nil {
+			slog.Warn("unknown Pais", "code", row[5], "cnpj", c.CNPJ)
+		}
+		p.CPFRepresentanteLegal = row[6]
+		p.NomeRepresentanteLegal = row[7]
+		p.CodigoQualificacaoRepresentanteLegal, err = toInt(row[8])
+		if err != nil {
+			return fmt.Errorf("could not parse CodigoQualificacaoRepresentanteLegal for %s: %w", c.CNPJ, err)
+		}
+		p.QualificacaoRepresentanteLegal, err = stringFromKV(srcs, kv, "qua", row[8], 0)
+		if err != nil {
+			return fmt.Errorf("could not parse QualificacaoRepresentanteLegal for %s: %w", c.CNPJ, err)
+		}
+		p.CodigoFaixaEtaria, err = toInt(row[9])
+		if err != nil {
+			return fmt.Errorf("could not parse CodigoFaixaEtaria for %s: %w", c.CNPJ, err)
+		}
+		if p.CodigoFaixaEtaria != nil {
+			var f string
+			switch *p.CodigoFaixaEtaria {
+			case 1:
+				f = "Entre 0 a 12 anos"
+			case 2:
+				f = "Entre 13 a 20 ano"
+			case 3:
+				f = "Entre 21 a 30 anos"
+			case 4:
+				f = "Entre 31 a 40 anos"
+			case 5:
+				f = "Entre 41 a 50 anos"
+			case 6:
+				f = "Entre 51 a 60 anos"
+			case 7:
+				f = "Entre 61 a 70 anos"
+			case 8:
+				f = "Entre 71 a 80 anos"
+			case 9:
+				f = "Maiores de 80 anos"
+			case 0:
+				f = "Não se aplica"
+			default:
+				slog.Error("unknown CodigoFaixaEtaria", "value", *p.CodigoFaixaEtaria, "cnpj", c.CNPJ)
+			}
+			if f != "" {
+				p.FaixaEtaria = &f
+			}
+		}
+		c.QuadroSocietario = append(c.QuadroSocietario, p)
+	}
+	sort.Slice(c.QuadroSocietario, func(i, j int) bool {
+		return c.QuadroSocietario[i].NomeSocio < c.QuadroSocietario[j].NomeSocio
+	})
+	return nil
 }
 
 func (c *Company) taxes(srcs map[string]*source, kv *kv) error {
-	var g errgroup.Group
-	ch := make(chan TaxRegime)
-	done := make(chan struct{}, 1)
 	for _, p := range []string{"arb", "imu", "pre", "rea"} {
-		g.Go(func() error {
-			src, ok := srcs[p]
-			if !ok {
-				return fmt.Errorf("could not find lookup %s", p)
+		src, ok := srcs[p]
+		if !ok {
+			return fmt.Errorf("could not find lookup %s", p)
+		}
+		k := src.keyPrefixFor(c.CNPJ)
+		rows, err := kv.getPrefix(k)
+		if err != nil {
+			if errors.Is(err, badger.ErrKeyNotFound) {
+				continue
 			}
-			k := src.keyPrefixFor(c.CNPJ)
-			rows, err := kv.getPrefix(k)
+			return fmt.Errorf("could not find %s", string(k))
+		}
+		for _, row := range rows {
+			var t TaxRegime
+			y, err := toInt(row[0])
 			if err != nil {
-				if errors.Is(err, badger.ErrKeyNotFound) {
-					return nil
-				}
-				return fmt.Errorf("could not find %s", string(k))
+				return fmt.Errorf("could not parse Ano for %s: %w", string(k), err)
 			}
-			for _, row := range rows {
-				var t TaxRegime
-				y, err := toInt(row[0])
-				if err != nil {
-					return fmt.Errorf("could not parse Ano for %s: %w", string(k), err)
-				}
-				t.Ano = *y
-				if row[1] != "" && row[1] != "0" {
-					t.CNPJDaSCP = &row[1]
-				}
-				t.FormaDeTributação = row[2]
-				q, err := toInt(row[3])
-				if err != nil {
-					return fmt.Errorf("could not parse QuantidadeDeEscrituracoes for %s: %w", string(k), err)
-				}
-				t.QuantidadeDeEscrituracoes = *q
-				ch <- t
+			t.Ano = *y
+			if row[1] != "" && row[1] != "0" {
+				t.CNPJDaSCP = &row[1]
 			}
-			return nil
-		})
-	}
-	go func() {
-		for t := range ch {
+			t.FormaDeTributação = row[2]
+			q, err := toInt(row[3])
+			if err != nil {
+				return fmt.Errorf("could not parse QuantidadeDeEscrituracoes for %s: %w", string(k), err)
+			}
+			t.QuantidadeDeEscrituracoes = *q
 			c.RegimeTributario = append(c.RegimeTributario, t)
 		}
-		sort.Slice(c.RegimeTributario, func(i, j int) bool {
-			return c.RegimeTributario[i].Ano < c.RegimeTributario[j].Ano
-		})
-		done <- struct{}{}
-	}()
-	err := g.Wait()
-	close(ch)
-	<-done
-	return err
+	}
+	sort.Slice(c.RegimeTributario, func(i, j int) bool {
+		return c.RegimeTributario[i].Ano < c.RegimeTributario[j].Ano
+	})
+	return nil
 }
 
 func (c *Company) descricaoMatrizFilial() error {
