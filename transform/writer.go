@@ -43,7 +43,7 @@ func worker(ctx context.Context, db database, s int, ch <-chan []string) error {
 }
 
 func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db database, maxDB, batch int, ext string, privacy bool) error { // TODO: test
-	bar, err := newProgressBar("[Step 3 of 3] Writing JSONs", 1)
+	bar, err := newProgressBar("[3/3] Writing JSONs", 1)
 	if err != nil {
 		return fmt.Errorf("could not create a progress bar: %w", err)
 	}

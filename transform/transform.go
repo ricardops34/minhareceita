@@ -175,7 +175,7 @@ func transform(dir string, db database, batch, maxDB int, privacy bool, ibgeMuni
 	if err := os.Mkdir(ext, 0700); err != nil {
 		return fmt.Errorf("could not create extraction directory: %w", err)
 	}
-	bar, err := newProgressBar("[Step 1 of 3] Extracting main archive", 1)
+	bar, err := newProgressBar("[1/3] Extracting main archive", 1)
 	if err != nil {
 		return fmt.Errorf("could not create a progress bar: %w", err)
 	}
@@ -191,7 +191,7 @@ func transform(dir string, db database, batch, maxDB int, privacy bool, ibgeMuni
 			slog.Warn("could not close badger database", "error", err)
 		}
 	}()
-	bar, err = newProgressBar("[Step 2 of 3] Loading data to key-value storage", len(srcs))
+	bar, err = newProgressBar("[2/3] Loading data to key-value storage", len(srcs))
 	if err != nil {
 		return fmt.Errorf("could not create a progress bar: %w", err)
 	}
