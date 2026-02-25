@@ -134,15 +134,16 @@ func (c *Company) JSON(p *sync.Pool) (string, error) {
 	return b.String(), nil
 }
 
-func newCompany(srcs map[string]*source, kv *kv, row []string) (*Company, error) {
+func newCompany(log *slog.Logger, srcs map[string]*source, kv *kv, row []string) (*Company, error) {
 	var c Company
 	var err error
 	c.CNPJ = strings.Join(row[:3], "")
+	log = log.With("cnpj", c.CNPJ)
 	c.IdentificadorMatrizFilial, err = toInt(row[3])
 	if err != nil {
 		return nil, fmt.Errorf("could not parse IdentificadorMatrizFilial for %s: %w", c.CNPJ, err)
 	}
-	if err := c.descricaoMatrizFilial(); err != nil {
+	if err := c.descricaoMatrizFilial(log); err != nil {
 		return nil, fmt.Errorf("could not parse IdentificadorMatrizFilial for %s: %w", c.CNPJ, err)
 	}
 	c.NomeFantasia = row[4]
@@ -150,7 +151,7 @@ func newCompany(srcs map[string]*source, kv *kv, row []string) (*Company, error)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse SituacaoCadastral for %s: %w", c.CNPJ, err)
 	}
-	if err := c.descricaoSituacaoCadastral(); err != nil {
+	if err := c.descricaoSituacaoCadastral(log); err != nil {
 		return nil, fmt.Errorf("could not get DescricaoSituacaoCadastral for %s: %w", c.CNPJ, err)
 	}
 	c.DataSituacaoCadastral, err = toDate(row[6])
@@ -163,7 +164,7 @@ func newCompany(srcs map[string]*source, kv *kv, row []string) (*Company, error)
 	}
 	c.DescricaoMotivoSituacaoCadastral, err = stringFromKV(srcs, kv, "mot", row[7], 0)
 	if err != nil {
-		slog.Warn("unknown MotivoSituacaoCadastral", "code", row[7], "cnpj", c.CNPJ)
+		log.Warn("unknown MotivoSituacaoCadastral", "code", row[7])
 	}
 	c.NomeCidadeNoExterior = row[8]
 	c.CodigoPais, err = toInt(row[9])
@@ -172,7 +173,7 @@ func newCompany(srcs map[string]*source, kv *kv, row []string) (*Company, error)
 	}
 	c.Pais, err = stringFromKV(srcs, kv, "pai", row[9], 0)
 	if err != nil {
-		slog.Warn("unknown CodigoPais", "code", row[9], "cnpj", c.CNPJ)
+		log.Warn("unknown CodigoPais", "code", row[9])
 	}
 	c.DataInicioAtividade, err = toDate(row[10])
 	if err != nil {
@@ -200,7 +201,7 @@ func newCompany(srcs map[string]*source, kv *kv, row []string) (*Company, error)
 	if c.CodigoMunicipio != nil && *c.CodigoMunicipio != 9707 { // overseas city code
 		ibge, err := stringFromKV(srcs, kv, "tab", row[20], 3)
 		if err != nil {
-			slog.Warn("unknown CodigoMunicipioIBGE", "code", row[20], "cnpj", c.CNPJ)
+			log.Warn("unknown CodigoMunicipioIBGE", "code", row[20])
 		} else {
 			c.CodigoMunicipioIBGE, err = toInt(*ibge)
 			if err != nil {
@@ -210,7 +211,7 @@ func newCompany(srcs map[string]*source, kv *kv, row []string) (*Company, error)
 	}
 	c.Municipio, err = stringFromKV(srcs, kv, "mun", row[20], 0)
 	if err != nil {
-		slog.Warn("unknown Municipio", "code", row[20], "cnpj", c.CNPJ)
+		log.Warn("unknown Municipio", "code", row[20])
 	}
 	c.Telefone1 = row[21] + row[22]
 	c.Telefone2 = row[23] + row[24]
@@ -221,7 +222,7 @@ func newCompany(srcs map[string]*source, kv *kv, row []string) (*Company, error)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse DataSituacaoEspecial for %s: %w", c.CNPJ, err)
 	}
-	if err := c.base(srcs, kv); err != nil {
+	if err := c.base(log, srcs, kv); err != nil {
 		return nil, err
 	}
 	if err := c.simples(srcs, kv); err != nil {
@@ -230,7 +231,7 @@ func newCompany(srcs map[string]*source, kv *kv, row []string) (*Company, error)
 	if err := c.cnaes(srcs, kv, row[12]); err != nil {
 		return nil, err
 	}
-	if err := c.partners(srcs, kv); err != nil {
+	if err := c.partners(log, srcs, kv); err != nil {
 		return nil, err
 	}
 	if err := c.taxes(srcs, kv); err != nil {

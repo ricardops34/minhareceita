@@ -2,6 +2,7 @@ package transform
 
 import (
 	"context"
+	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
@@ -125,7 +126,7 @@ func TestNewCompany(t *testing.T) {
 	}()
 	srcs := sources()
 	loadAllTestSources(t, kv)
-	got, err := newCompany(srcs, kv, row)
+	got, err := newCompany(slog.Default(), srcs, kv, row)
 	if err != nil {
 		t.Fatalf("expected no error creating a company, got %s", err)
 	}
@@ -353,7 +354,7 @@ func TestNewCompanyWithPrivacy(t *testing.T) {
 		"",                       // 28 Situação Especial
 		"",                       // 29 Data Situação Especial
 	}
-	got, err := newCompany(srcs, kv, row)
+	got, err := newCompany(slog.Default(), srcs, kv, row)
 	if err != nil {
 		t.Fatalf("expected no error creating a company, got %s", err)
 	}

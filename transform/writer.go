@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/encoding/charmap"
@@ -42,7 +43,7 @@ func worker(ctx context.Context, db database, s int, ch <-chan []string) error {
 	}
 }
 
-func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db database, maxDB, batch int, ext string, privacy bool) error { // TODO: test
+func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db database, maxDB, batch int, ext string, privacy bool) error {
 	bar, err := newProgressBar("[3/3] Writing JSONs", 1)
 	if err != nil {
 		return fmt.Errorf("could not create a progress bar: %w", err)
@@ -50,6 +51,28 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 	defer func() {
 		bar.AddMax(-1) // compensate for the extra byte added when creating the bar
 	}()
+	n := fmt.Sprintf("minha-receita-etl-%s.log", time.Now().Format("20060102150405"))
+	f, err := os.Create(n)
+	if err != nil {
+		return fmt.Errorf("could not create log file %s: %w", n, err)
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			slog.Warn("could not close the log file", "name", n, "error", err)
+		}
+		i, err := os.Stat(n)
+		if err != nil {
+			slog.Warn("could not check log file size", "name", n, "error", err)
+			return
+		}
+		if i.Size() != 0 {
+			return
+		}
+		if err := os.Remove(n); err != nil {
+			slog.Warn("could not delete empty log file", "name", n, "error", err)
+		}
+	}()
+	log := slog.New(slog.NewJSONHandler(f, nil))
 	src := newCompanySrc("Estabelecimentos", ';', false, false)
 	buf := &sync.Pool{
 		New: func() any {
@@ -124,7 +147,7 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 							for n := range row {
 								row[n] = cleanupColumn(row[n])
 							}
-							c, err := newCompany(srcs, kv, row)
+							c, err := newCompany(log, srcs, kv, row)
 							if err != nil {
 								return fmt.Errorf("could not create company %v: %w", row[:3], err)
 							}

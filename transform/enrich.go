@@ -37,7 +37,7 @@ func stringFromKV(srcs map[string]*source, kv *kv, prefix string, id string, idx
 	return &v[idx], nil
 }
 
-func (c *Company) base(srcs map[string]*source, kv *kv) error {
+func (c *Company) base(log *slog.Logger, srcs map[string]*source, kv *kv) error {
 	var err error
 	row, err := stringsFromKV(srcs, kv, "emp", c.CNPJ[:8])
 	if err != nil {
@@ -73,7 +73,7 @@ func (c *Company) base(srcs map[string]*source, kv *kv) error {
 	if err != nil {
 		return fmt.Errorf("could not parse CodigoParse for %s: %w", c.CNPJ, err)
 	}
-	if err := c.porte(); err != nil {
+	if err := c.porte(log); err != nil {
 		return err
 	}
 	c.EnteFederativoResponsavel = row[5]
@@ -134,7 +134,7 @@ func (c *Company) cnaes(srcs map[string]*source, kv *kv, codes string) error {
 	return nil
 }
 
-func (c *Company) partners(srcs map[string]*source, kv *kv) error {
+func (c *Company) partners(log *slog.Logger, srcs map[string]*source, kv *kv) error {
 	src, ok := srcs["soc"]
 	if !ok {
 		return errors.New("could not find lookup soc")
@@ -174,7 +174,7 @@ func (c *Company) partners(srcs map[string]*source, kv *kv) error {
 		}
 		p.Pais, err = stringFromKV(srcs, kv, "pai", row[5], 0)
 		if err != nil {
-			slog.Warn("unknown Pais", "code", row[5], "cnpj", c.CNPJ)
+			log.Warn("unknown Pais", "code", row[5])
 		}
 		p.CPFRepresentanteLegal = row[6]
 		p.NomeRepresentanteLegal = row[7]
@@ -214,7 +214,7 @@ func (c *Company) partners(srcs map[string]*source, kv *kv) error {
 			case 0:
 				f = "Não se aplica"
 			default:
-				slog.Error("unknown CodigoFaixaEtaria", "value", *p.CodigoFaixaEtaria, "cnpj", c.CNPJ)
+				log.Error("unknown CodigoFaixaEtaria", "value", *p.CodigoFaixaEtaria)
 			}
 			if f != "" {
 				p.FaixaEtaria = &f
@@ -267,7 +267,7 @@ func (c *Company) taxes(srcs map[string]*source, kv *kv) error {
 	return nil
 }
 
-func (c *Company) descricaoMatrizFilial() error {
+func (c *Company) descricaoMatrizFilial(log *slog.Logger) error {
 	if c.IdentificadorMatrizFilial == nil {
 		return fmt.Errorf("company %s missing IdentificadorMatrizFilial", c.CNPJ)
 	}
@@ -278,14 +278,14 @@ func (c *Company) descricaoMatrizFilial() error {
 	case 2:
 		d = "FILIAL"
 	default:
-		slog.Error("unknown IdentificadorMatrizFilial", "value", *c.IdentificadorMatrizFilial, "cnpj", c.CNPJ)
+		log.Error("unknown IdentificadorMatrizFilial", "value", *c.IdentificadorMatrizFilial)
 		return nil
 	}
 	c.DescricaoMatrizFilial = &d
 	return nil
 }
 
-func (c *Company) descricaoSituacaoCadastral() error {
+func (c *Company) descricaoSituacaoCadastral(log *slog.Logger) error {
 	if c.SituacaoCadastral == nil {
 		return fmt.Errorf("company %s missing SituacaoCadastral", c.CNPJ)
 	}
@@ -302,14 +302,14 @@ func (c *Company) descricaoSituacaoCadastral() error {
 	case 8:
 		d = "BAIXADA"
 	default:
-		slog.Error("unknown SituacaoCadastral", "value", *c.SituacaoCadastral, "cnpj", c.CNPJ)
+		log.Error("unknown SituacaoCadastral", "value", *c.SituacaoCadastral)
 		return nil
 	}
 	c.DescricaoSituacaoCadastral = &d
 	return nil
 }
 
-func (c *Company) porte() error {
+func (c *Company) porte(log *slog.Logger) error {
 	if c.CodigoPorte == nil {
 		return nil
 	}
@@ -324,7 +324,7 @@ func (c *Company) porte() error {
 	case 5:
 		p = "DEMAIS"
 	default:
-		slog.Error("unknown CodigoPorte", "value", *c.CodigoPorte, "cnpj", c.CNPJ)
+		log.Error("unknown CodigoPorte", "value", *c.CodigoPorte)
 		return nil
 	}
 	c.Porte = &p
