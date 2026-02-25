@@ -8,10 +8,9 @@ import (
 	"strings"
 
 	"codeberg.org/cuducos/minha-receita/transform"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 type mongoRecord struct {
@@ -28,7 +27,7 @@ type MongoDB struct {
 func NewMongoDB(uri string) (MongoDB, error) {
 	opts := options.Client().ApplyURI(uri)
 	ctx := context.Background()
-	c, err := mongo.Connect(ctx, opts)
+	c, err := mongo.Connect(opts)
 	if err != nil {
 		return MongoDB{}, fmt.Errorf("failed to connect to MongoDB: %w", err)
 	}
@@ -121,7 +120,7 @@ func (m *MongoDB) MetaSave(k, v string) error {
 		return fmt.Errorf("the key can have a maximum of 16 characters")
 	}
 	f := bson.M{"key": k}
-	o := options.Update().SetUpsert(true) // if it does not exist, creates it
+	o := options.UpdateOne().SetUpsert(true) // if it does not exist, creates it
 	upd := bson.M{"$set": bson.M{"key": k, "value": v}}
 	_, err := c.UpdateOne(context.Background(), f, upd, o)
 	if err != nil {
@@ -182,8 +181,8 @@ func (m *MongoDB) PostLoad() error {
 	}()
 	for c.Next(ctx) {
 		var result struct {
-			ID   string               `bson:"_id"`
-			Docs []primitive.ObjectID `bson:"docs"`
+			ID   string          `bson:"_id"`
+			Docs []bson.ObjectID `bson:"docs"`
 		}
 		if err := c.Decode(&result); err != nil {
 			return fmt.Errorf("error decoding result: %w", err)
@@ -283,7 +282,7 @@ func (m *MongoDB) Search(ctx context.Context, q *Query) (string, error) {
 		f["json.qsa.cnpj_cpf_do_socio"] = bson.M{"$in": q.CNPF}
 	}
 	if q.Cursor != nil {
-		id, err := primitive.ObjectIDFromHex(*q.Cursor)
+		id, err := bson.ObjectIDFromHex(*q.Cursor)
 		if err != nil {
 			return "", fmt.Errorf("error parsing cursor: %w", err)
 		}

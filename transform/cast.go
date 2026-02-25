@@ -6,9 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/bsontype"
-	"go.mongodb.org/mongo-driver/x/bsonx/bsoncore"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/x/bsonx/bsoncore"
 )
 
 const (
@@ -73,14 +72,14 @@ func (d *date) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + t.Format(dateOutputFormat) + `"`), nil
 }
 
-func (d date) MarshalBSONValue() (bsontype.Type, []byte, error) {
+func (d date) MarshalBSONValue() (byte, []byte, error) {
 	t := time.Time(d)
-	return bson.TypeString, bsoncore.AppendString(nil, t.Format(dateOutputFormat)), nil
+	return byte(bson.TypeString), bsoncore.AppendString(nil, t.Format(dateOutputFormat)), nil
 }
 
-func (d *date) UnmarshalBSONValue(t bsontype.Type, v []byte) error {
+func (d *date) UnmarshalBSONValue(t byte, v []byte) error {
 	switch t {
-	case bson.TypeString:
+	case byte(bson.TypeString):
 		s, _, ok := bsoncore.ReadString(v)
 		if !ok {
 			return fmt.Errorf("invalid bson string")
@@ -94,7 +93,7 @@ func (d *date) UnmarshalBSONValue(t bsontype.Type, v []byte) error {
 		}
 		*d = date(p)
 		return nil
-	case bson.TypeDateTime:
+	case byte(bson.TypeDateTime):
 		i, _, ok := bsoncore.ReadDateTime(v)
 		if !ok {
 			return fmt.Errorf("invalid bson datetime")

@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"codeberg.org/cuducos/minha-receita/testutils"
-	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 var mongoDefaultIndexes = []string{"_id_", "id_1"}
