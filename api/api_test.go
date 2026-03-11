@@ -17,7 +17,7 @@ import (
 
 type mockDatabase struct{}
 
-func (mockDatabase) GetCompany(n string) (string, error) {
+func (mockDatabase) GetCompany(ctx context.Context, n string) (string, error) {
 	n = cnpj.Unmask(n)
 	if n != "19131243000197" {
 		return "", errors.New("Company not found")

@@ -169,8 +169,7 @@ func (p *PostgreSQL) CreateCompanies(batch [][]string) error {
 }
 
 // GetCompany returns the JSON of a company based on a CNPJ number.
-func (p *PostgreSQL) GetCompany(id string) (string, error) {
-	ctx := context.Background()
+func (p *PostgreSQL) GetCompany(ctx context.Context, id string) (string, error) {
 	rows, err := p.pool.Query(ctx, p.getCompanyQuery, id)
 	if err != nil {
 		return "", fmt.Errorf("error looking for cnpj %s: %w", id, err)

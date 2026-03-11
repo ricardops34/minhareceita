@@ -28,7 +28,7 @@ func getCompany(db database, n string) (string, error) {
 			ch := make(chan error, 1)
 			go func() {
 				var err error
-				c, err = db.GetCompany(cnpj.Unmask(n))
+				c, err = db.GetCompany(ctx, cnpj.Unmask(n))
 				ch <- err
 			}()
 			select {

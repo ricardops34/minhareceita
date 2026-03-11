@@ -205,10 +205,10 @@ func (m *MongoDB) PostLoad() error {
 	return nil
 }
 
-func (m *MongoDB) GetCompany(id string) (string, error) {
+func (m *MongoDB) GetCompany(ctx context.Context, id string) (string, error) {
 	coll := m.db.Collection(companyTableName)
 	var r bson.Raw
-	err := coll.FindOne(context.Background(), bson.M{idFieldName: id}).Decode(&r)
+	err := coll.FindOne(ctx, bson.M{idFieldName: id}).Decode(&r)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return "", fmt.Errorf("no document found for CNPJ %s", id)

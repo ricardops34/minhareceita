@@ -28,7 +28,7 @@ const (
 var cacheControl = fmt.Sprintf("max-age=%d", int(cacheMaxAge.Seconds()))
 
 type database interface {
-	GetCompany(string) (string, error)
+	GetCompany(context.Context, string) (string, error)
 	Search(context.Context, *db.Query) (string, error)
 	MetaRead(string) (string, error)
 }

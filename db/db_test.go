@@ -21,7 +21,7 @@ type database interface {
 	Close()
 
 	CreateCompanies([][]string) error
-	GetCompany(string) (string, error)
+	GetCompany(context.Context, string) (string, error)
 
 	CreateExtraIndexes([]string) error
 	Search(context.Context, *Query) (string, error)
@@ -101,7 +101,7 @@ func TestRetrieve(t *testing.T) {
 	}()
 	for _, db := range []database{pg, m} {
 		t.Run(fmt.Sprintf("%T", db), func(t *testing.T) {
-			got, err := db.GetCompany("33683111000280")
+			got, err := db.GetCompany(context.Background(), "33683111000280")
 			if err != nil {
 				t.Errorf("expected no error getting a company, got %s", err)
 			}
