@@ -91,9 +91,9 @@ func sources() map[string]*source { // all but Estabelecimentos (this one is loa
 	srcs := []*source{
 		newCompanySrc("Cnaes", ';', false, false),
 		newCompanySrc("Empresas", ';', false, false),
-		newTaxSrc("Imunes e Isentas", "entidades-imunes-e-isentas", ';', false, true),
+		newTaxSrc("Imunes e Isentas", "entidades-imunes-e-isentas", ',', true, true),
 		newTaxSrc("Lucro Arbitrado", "entidades-lucro-arbitrado", ',', true, true),
-		newTaxSrc("Lucro Presumido", "entidades-lucro-presumido", ';', false, true),
+		newTaxSrc("Lucro Presumido", "entidades-lucro-presumido", ',', true, true),
 		newTaxSrc("Lucro Real", "entidades-lucro-real", ',', true, true),
 		newCompanySrc("Motivos", ';', false, false),
 		newCompanySrc("Municipios", ';', false, false),
