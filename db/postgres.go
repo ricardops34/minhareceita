@@ -387,7 +387,10 @@ func NewPostgreSQL(uri, schema string) (PostgreSQL, error) {
 	if err != nil {
 		return PostgreSQL{}, fmt.Errorf("error rendering meta-read template: %w", err)
 	}
-	if err := p.pool.Ping(context.Background()); err != nil {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := p.pool.Ping(ctx); err != nil {
 		return PostgreSQL{}, fmt.Errorf("could not connect to postgres: %w", err)
 	}
 	return p, nil

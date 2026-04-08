@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"codeberg.org/cuducos/minha-receita/transform"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -26,11 +27,12 @@ type MongoDB struct {
 // NewMongoDB initializes a new MongoDB connection wrapped in a structure.
 func NewMongoDB(uri string) (MongoDB, error) {
 	opts := options.Client().ApplyURI(uri)
-	ctx := context.Background()
 	c, err := mongo.Connect(opts)
 	if err != nil {
 		return MongoDB{}, fmt.Errorf("failed to connect to MongoDB: %w", err)
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	if err := c.Ping(ctx, nil); err != nil {
 		return MongoDB{}, fmt.Errorf("failed to ping to MongoDB: %w", err)
 	}
