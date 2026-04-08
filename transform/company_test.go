@@ -297,7 +297,7 @@ func TestNewCompany(t *testing.T) {
 		t.Errorf("expected partner age range to be Entre 51 a 60 anos, got %s", *got.QuadroSocietario[0].FaixaEtaria)
 	}
 	if len(got.RegimeTributario) != 1 {
-		t.Errorf("expected RegimeTributario to have 1 item, got %d", len(got.RegimeTributario))
+		t.Errorf("expected RegimeTributario to have 1 item, got %d items", len(got.RegimeTributario))
 	}
 	if got.RegimeTributario[0].Ano != 2018 {
 		t.Errorf("expected tax regime year to be 2018, got %d", got.RegimeTributario[0].Ano)
