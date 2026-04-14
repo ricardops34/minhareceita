@@ -34,8 +34,9 @@ type database interface {
 }
 
 type api struct {
-	db   database
-	host string
+	db    database
+	host  string
+	cache *cache
 }
 
 // messageResponse takes a text message and a HTTP status, wraps the message into a
@@ -60,11 +61,27 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 		registerMetric("singleCompany", r.Method, http.StatusBadRequest, i)
 		return
 	}
-	s, err := getCompany(app.db, pth)
+	id := cnpj.Unmask(pth)
+	if app.cache != nil {
+		if s, ok := app.cache.get(id); ok {
+			cacheHits.Inc()
+			w.WriteHeader(http.StatusOK)
+			if _, err := io.WriteString(w, s); err != nil {
+				slog.Error("error responding to cached single company request", "request", r, "error", err)
+			}
+			registerMetric("singleCompany", r.Method, http.StatusOK, i)
+			return
+		}
+		cacheMisses.Inc()
+	}
+	s, err := getCompany(r.Context(), app.db, pth)
 	if err != nil {
 		app.messageResponse(w, http.StatusNotFound, fmt.Sprintf("CNPJ %s não encontrado.", cnpj.Mask(pth)))
 		registerMetric("singleCompany", r.Method, http.StatusNotFound, i)
 		return
+	}
+	if app.cache != nil {
+		app.cache.set(id, s)
 	}
 	w.WriteHeader(http.StatusOK)
 	if _, err := io.WriteString(w, s); err != nil {
@@ -191,7 +208,7 @@ func Serve(db database, p string) error {
 	if !strings.HasPrefix(p, ":") {
 		p = ":" + p
 	}
-	app := api{db, os.Getenv("ALLOWED_HOST")}
+	app := api{db: db, host: os.Getenv("ALLOWED_HOST"), cache: newCache()}
 	for _, r := range []struct {
 		path    string
 		handler func(http.ResponseWriter, *http.Request)
