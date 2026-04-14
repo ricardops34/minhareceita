@@ -359,7 +359,7 @@ func NewPostgreSQL(uri, schema string) (PostgreSQL, error) {
 	if err != nil {
 		return PostgreSQL{}, fmt.Errorf("could not create database config: %w", err)
 	}
-	cfg.MaxConns = 128
+	cfg.MaxConns = 16
 	cfg.MinConns = 1
 	cfg.MaxConnIdleTime = 5 * time.Minute
 	cfg.MaxConnLifetime = 30 * time.Minute
