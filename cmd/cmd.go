@@ -79,7 +79,7 @@ var createExtraIndexesCmd = &cobra.Command{
 
 // CLI returns the root command from Cobra CLI tool.
 func CLI() *cobra.Command {
-	for _, c := range []*cobra.Command{createCmd, dropCmd} {
+	for _, c := range []*cobra.Command{createCmd, dropCmd, transformCmd} {
 		addDatabase(c)
 	}
 	rootCmd.AddCommand(
