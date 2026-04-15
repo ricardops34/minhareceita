@@ -65,6 +65,11 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 	if app.cache != nil {
 		if s, ok := app.cache.get(id); ok {
 			cacheHits.Inc()
+			if s == "" {
+				app.messageResponse(w, http.StatusNotFound, fmt.Sprintf("CNPJ %s não encontrado.", cnpj.Mask(pth)))
+				registerMetric("singleCompany", r.Method, http.StatusNotFound, i)
+				return
+			}
 			w.WriteHeader(http.StatusOK)
 			if _, err := io.WriteString(w, s); err != nil {
 				slog.Error("error responding to cached single company request", "request", r, "error", err)
@@ -76,6 +81,9 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 	}
 	s, err := getCompany(r.Context(), app.db, pth)
 	if err != nil {
+		if app.cache != nil {
+			app.cache.setNotFound(id)
+		}
 		app.messageResponse(w, http.StatusNotFound, fmt.Sprintf("CNPJ %s não encontrado.", cnpj.Mask(pth)))
 		registerMetric("singleCompany", r.Method, http.StatusNotFound, i)
 		return
