@@ -34,6 +34,10 @@ func (mockDatabase) Search(ctx context.Context, q *db.Query) (string, error) { r
 
 func (mockDatabase) MetaRead(k string) (string, error) { return "42", nil }
 
+func (mockDatabase) AllCompanies(ctx context.Context, cursor *string, limit uint32) ([]string, *string, error) {
+	return nil, nil, nil
+}
+
 func TestCompanyHandler(t *testing.T) {
 	f, err := filepath.Abs(filepath.Join("..", "testdata", "response.json"))
 	if err != nil {

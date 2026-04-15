@@ -27,6 +27,18 @@ var (
 		Name: "cache_misses_total",
 		Help: "The total number of cache misses",
 	})
+	bloomFilterReady = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "bloom_filter_ready",
+		Help: "1 when the CNPJ bloom filter is fully built, 0 otherwise",
+	})
+	bloomFilterEarlyExits = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "bloom_filter_early_exits_total",
+		Help: "Total 404s short-circuited by the bloom filter (never hit the DB)",
+	})
+	bloomFilterBuildDuration = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "bloom_filter_build_duration_seconds",
+		Help: "How long it took to build the bloom filter (seconds)",
+	})
 )
 
 func registerMetric(e, m string, s int, i int64) {

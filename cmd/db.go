@@ -29,6 +29,7 @@ type database interface {
 	GetCompany(context.Context, string) (string, error)
 	Search(context.Context, *db.Query) (string, error)
 	MetaRead(string) (string, error)
+	AllCompanies(context.Context, *string, uint32) ([]string, *string, error)
 }
 
 func loadDatabase() (database, error) {

@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/avast/retry-go/v4 v4.7.0
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cuducos/go-cnpj v0.1.2
 	github.com/dgraph-io/badger/v4 v4.9.1
 	github.com/dgraph-io/ristretto/v2 v2.4.0
@@ -19,7 +20,6 @@ require (
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -351,6 +352,46 @@ func (p *PostgreSQL) CreateExtraIndexes(idxs []string) error {
 	}
 	slog.Info(fmt.Sprintf("%d Indexes successfully created in the table %s", len(idxs), p.CompanyTableName))
 	return nil
+}
+
+// AllCompanies returns a paginated list of CNPJ numbers from the database.
+func (p *PostgreSQL) AllCompanies(ctx context.Context, cursor *string, limit uint32) ([]string, *string, error) {
+	b := sqlbuilder.PostgreSQL.NewSelectBuilder().
+		Select(p.CursorFieldName, p.IDFieldName).
+		From(p.CompanyTableFullName()).
+		OrderByAsc(p.CursorFieldName).
+		Limit(int(limit))
+
+	if cursor != nil {
+		c, err := strconv.Atoi(*cursor)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid cursor: %w", err)
+		}
+		b.Where(b.GreaterThan(p.CursorFieldName, c))
+	}
+
+	sql, args := b.Build()
+	q, err := p.pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error listing CNPJs: %w", err)
+	}
+
+	rows, err := pgx.CollectRows(q, pgx.RowToStructByPos[postgresRecord])
+	if err != nil {
+		return nil, nil, fmt.Errorf("error reading CNPJs: %w", err)
+	}
+
+	ids := make([]string, len(rows))
+	for i, r := range rows {
+		ids[i] = r.Company
+	}
+
+	if len(rows) < int(limit) {
+		return ids, nil, nil
+	}
+
+	cur := fmt.Sprintf("%d", rows[len(rows)-1].Cursor)
+	return ids, &cur, nil
 }
 
 // NewPostgreSQL creates a new PostgreSQL connection and ping it to make sure it works.

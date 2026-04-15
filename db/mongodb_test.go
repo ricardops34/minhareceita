@@ -90,3 +90,63 @@ func TestMongoCreateIndexes(t *testing.T) {
 	}
 	testutils.AssertArraysHaveSameItems(t, i, listIndexesMongo(t, m))
 }
+
+func TestMongoAllCompanies(t *testing.T) {
+	id := "33683111000280"
+	b, err := os.ReadFile(filepath.Join("..", "testdata", "response.json"))
+	if err != nil {
+		t.Error("error reading company JSON file")
+	}
+	c := string(b)
+	m, err := setUpMongo(id, c)
+	if err != nil {
+		t.Errorf("expected no error setting up mongo, got %s", err)
+		return
+	}
+	defer func() {
+		if err := m.Drop(); err != nil {
+			t.Errorf("expected no error dropping the tables, got %s", err)
+		}
+		m.Close()
+	}()
+
+	id2 := "00000000000000"
+	id3 := "11111111111111"
+	c2 := strings.Replace(c, id, id2, 1)
+	c3 := strings.Replace(c, id, id3, 1)
+
+	if err := m.CreateCompanies([][]string{{id2, c2}, {id3, c3}}); err != nil {
+		t.Errorf("expected no error saving additional companies to mongo, got %s", err)
+		return
+	}
+
+	ids, cur, err := m.AllCompanies(context.Background(), nil, 2)
+	if err != nil {
+		t.Errorf("expected no error getting first page, got %s", err)
+	}
+	if len(ids) != 2 {
+		t.Errorf("expected 2 IDs, got %d", len(ids))
+	}
+	if cur == nil {
+		t.Error("expected cursor for next page")
+	}
+
+	if cur != nil {
+		ids2, cur2, err := m.AllCompanies(context.Background(), cur, 2)
+		if err != nil {
+			t.Errorf("expected no error getting second page, got %s", err)
+		}
+		if len(ids2) != 1 {
+			t.Errorf("expected 1 ID on second page, got %d", len(ids2))
+		}
+		if cur2 != nil {
+			t.Error("expected nil cursor at the end")
+		}
+	}
+
+	not := "not-a-valid-objectid"
+	_, _, err = m.AllCompanies(context.Background(), &not, 2)
+	if err == nil {
+		t.Error("expected error for invalid cursor")
+	}
+}

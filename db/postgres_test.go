@@ -92,3 +92,63 @@ func TestPostgresCreateIndexes(t *testing.T) {
 	}
 	testutils.AssertArraysHaveSameItems(t, i, listIndexesPostgres(t, pg))
 }
+
+func TestPostgresAllCompanies(t *testing.T) {
+	id := "33683111000280"
+	b, err := os.ReadFile(filepath.Join("..", "testdata", "response.json"))
+	if err != nil {
+		t.Error("error reading company JSON file")
+	}
+	c := string(b)
+	pg, err := setUpPostgres(id, c)
+	if err != nil {
+		t.Errorf("expected no error setting up postgres, got %s", err)
+		return
+	}
+	defer func() {
+		if err := pg.Drop(); err != nil {
+			t.Errorf("expected no error dropping the tables, got %s", err)
+		}
+		pg.Close()
+	}()
+
+	id2 := "00000000000000"
+	id3 := "11111111111111"
+	c2 := strings.Replace(c, id, id2, 1)
+	c3 := strings.Replace(c, id, id3, 1)
+
+	if err := pg.CreateCompanies([][]string{{id2, c2}, {id3, c3}}); err != nil {
+		t.Errorf("expected no error saving additional companies to postgres, got %s", err)
+		return
+	}
+
+	ids, cur, err := pg.AllCompanies(context.Background(), nil, 2)
+	if err != nil {
+		t.Errorf("expected no error getting first page, got %s", err)
+	}
+	if len(ids) != 2 {
+		t.Errorf("expected 2 IDs, got %d", len(ids))
+	}
+	if cur == nil {
+		t.Error("expected cursor for next page")
+	}
+
+	if cur != nil {
+		ids2, cur2, err := pg.AllCompanies(context.Background(), cur, 2)
+		if err != nil {
+			t.Errorf("expected no error getting second page, got %s", err)
+		}
+		if len(ids2) != 1 {
+			t.Errorf("expected 1 ID on second page, got %d", len(ids2))
+		}
+		if cur2 != nil {
+			t.Error("expected nil cursor at the end")
+		}
+	}
+
+	not := "not-a-number"
+	_, _, err = pg.AllCompanies(context.Background(), &not, 2)
+	if err == nil {
+		t.Error("expected error for invalid cursor")
+	}
+}

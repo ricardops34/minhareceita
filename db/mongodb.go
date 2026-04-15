@@ -348,3 +348,46 @@ func (m *MongoDB) CreateExtraIndexes(idxs []string) error {
 	slog.Info(fmt.Sprintf("%d %s successfully created in the collection %s", len(r), l, companyTableName))
 	return nil
 }
+
+// AllCompanies returns a paginated list of CNPJ numbers from the database.
+func (m *MongoDB) AllCompanies(ctx context.Context, cursor *string, limit uint32) ([]string, *string, error) {
+	coll := m.db.Collection(companyTableName)
+	f := bson.D{}
+	if cursor != nil {
+		id, err := bson.ObjectIDFromHex(*cursor)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid cursor: %w", err)
+		}
+		f = bson.D{{Key: "_id", Value: bson.D{{Key: "$gt", Value: id}}}}
+	}
+	opts := options.Find().
+		SetProjection(bson.D{{Key: idFieldName, Value: 1}, {Key: "_id", Value: 1}}).
+		SetSort(bson.D{{Key: "_id", Value: 1}}).
+		SetLimit(int64(limit))
+	c, err := coll.Find(ctx, f, opts)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error listing CNPJs: %w", err)
+	}
+	defer func() {
+		if err := c.Close(ctx); err != nil {
+			slog.Error("could not close database connection", "error", err)
+		}
+	}()
+	var docs []bson.Raw
+	if err := c.All(ctx, &docs); err != nil {
+		return nil, nil, fmt.Errorf("error reading CNPJs: %w", err)
+	}
+	ids := make([]string, len(docs))
+	for i, doc := range docs {
+		id := doc.Lookup(idFieldName)
+		if err := id.Validate(); err != nil {
+			return nil, nil, fmt.Errorf("error getting ID from document: %w", err)
+		}
+		ids[i] = id.StringValue()
+	}
+	if len(docs) < int(limit) {
+		return ids, nil, nil
+	}
+	cur := docs[len(docs)-1].Lookup("_id").ObjectID().Hex()
+	return ids, &cur, nil
+}

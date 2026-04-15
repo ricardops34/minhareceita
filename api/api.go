@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"codeberg.org/cuducos/minha-receita/bloom"
 	"codeberg.org/cuducos/minha-receita/db"
 	"github.com/cuducos/go-cnpj"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -31,12 +32,14 @@ type database interface {
 	GetCompany(context.Context, string) (string, error)
 	Search(context.Context, *db.Query) (string, error)
 	MetaRead(string) (string, error)
+	AllCompanies(context.Context, *string, uint32) ([]string, *string, error)
 }
 
 type api struct {
 	db    database
 	host  string
 	cache *cache
+	check *bloom.Filter
 }
 
 // messageResponse takes a text message and a HTTP status, wraps the message into a
@@ -79,11 +82,19 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 		}
 		cacheMisses.Inc()
 	}
+	if app.check != nil && app.check.Ready() {
+		ok, err := app.check.Exists(id)
+		if err != nil {
+			slog.Error("could not check bloom filter", "cnpj", id, "error", err)
+		} else if !ok {
+			bloomFilterEarlyExits.Inc()
+			app.messageResponse(w, http.StatusNotFound, fmt.Sprintf("CNPJ %s não encontrado.", cnpj.Mask(pth)))
+			registerMetric("singleCompany", r.Method, http.StatusNotFound, i)
+			return
+		}
+	}
 	s, err := getCompany(r.Context(), app.db, pth)
 	if err != nil {
-		if app.cache != nil {
-			app.cache.setNotFound(id)
-		}
 		app.messageResponse(w, http.StatusNotFound, fmt.Sprintf("CNPJ %s não encontrado.", cnpj.Mask(pth)))
 		registerMetric("singleCompany", r.Method, http.StatusNotFound, i)
 		return
@@ -217,6 +228,19 @@ func Serve(db database, p string) error {
 		p = ":" + p
 	}
 	app := api{db: db, host: os.Getenv("ALLOWED_HOST"), cache: newCache()}
+
+	app.check = bloom.New(db)
+	go func() {
+		ini := time.Now()
+		if err := app.check.Initialize(context.Background()); err != nil {
+			slog.Error("could not Initialize bloom filter", "error", err)
+		}
+		if app.check.Ready() {
+			bloomFilterBuildDuration.Set(time.Since(ini).Seconds())
+			bloomFilterReady.Set(1)
+		}
+	}()
+
 	for _, r := range []struct {
 		path    string
 		handler func(http.ResponseWriter, *http.Request)
@@ -228,6 +252,7 @@ func Serve(db database, p string) error {
 	} {
 		http.HandleFunc(r.path, app.allowedHostWrapper(r.handler))
 	}
+
 	s := &http.Server{Addr: p, ReadTimeout: timeout * 2, WriteTimeout: timeout * 2}
 	slog.Info(fmt.Sprintf("Serving at http://0.0.0.0%s", p))
 	return s.ListenAndServe()
