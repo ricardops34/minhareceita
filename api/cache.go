@@ -12,8 +12,8 @@ type cache struct {
 
 func newCache() *cache {
 	r, err := ristretto.NewCache(&ristretto.Config[string, string]{
-		NumCounters: 1_000_000, // 10x the expected max items (100k)
-		MaxCost:     1 << 27,   // 128 MB
+		NumCounters: 200_000, // 10x the expected max items (20k)
+		MaxCost:     1 << 25, // 32 MB
 		BufferItems: 64,
 	})
 	if err != nil {
