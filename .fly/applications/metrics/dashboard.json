@@ -583,7 +583,7 @@
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 109 },
-      "id": 34, "panels": [], "title": "Roaring Bitmap", "type": "row"
+      "id": 34, "panels": [], "title": "Bloom Filter (404s)", "type": "row"
     },
     {
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
@@ -606,7 +606,7 @@
         "showPercentChange": false, "textMode": "auto", "wideLayout": true
       },
       "pluginVersion": "12.2.1",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }, "editorMode": "code", "expr": "roaring_bitmap_ready", "instant": true, "legendFormat": "ready", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }, "editorMode": "code", "expr": "bloom_filter_ready", "instant": true, "legendFormat": "ready", "refId": "A" }],
       "title": "Bitmap Ready",
       "type": "stat"
     },
@@ -630,7 +630,7 @@
         "showPercentChange": false, "textMode": "auto", "wideLayout": true
       },
       "pluginVersion": "12.2.1",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }, "editorMode": "code", "expr": "roaring_bitmap_build_duration_seconds", "instant": true, "legendFormat": "build time", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }, "editorMode": "code", "expr": "bloom_filter_build_duration_seconds", "instant": true, "legendFormat": "build time", "refId": "A" }],
       "title": "Build Duration",
       "type": "stat"
     },
@@ -654,7 +654,7 @@
         "showPercentChange": false, "textMode": "auto", "wideLayout": true
       },
       "pluginVersion": "12.2.1",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }, "editorMode": "code", "expr": "rate(roaring_bitmap_early_exits_total[5m]) * 60", "instant": true, "legendFormat": "early exits/min", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }, "editorMode": "code", "expr": "rate(bloom_filter_early_exits_total[5m]) * 60", "instant": true, "legendFormat": "early exits/min", "refId": "A" }],
       "title": "Early Exits / min",
       "type": "stat"
     },
@@ -673,7 +673,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 114 },
       "id": 38,
       "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }, "editorMode": "code", "expr": "rate(roaring_bitmap_early_exits_total[2m]) * 60", "legendFormat": "early exits/min", "range": true, "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }, "editorMode": "code", "expr": "rate(bloom_filter_early_exits_total[2m]) * 60", "legendFormat": "early exits/min", "range": true, "refId": "A" }],
       "title": "Early Exits Rate (req/min)",
       "type": "timeseries"
     },
@@ -692,7 +692,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 114 },
       "id": 39,
       "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }, "editorMode": "code", "expr": "roaring_bitmap_early_exits_total", "legendFormat": "total early exits", "range": true, "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" }, "editorMode": "code", "expr": "bloom_filter_early_exits_total", "legendFormat": "total early exits", "range": true, "refId": "A" }],
       "title": "Total Early Exits",
       "type": "timeseries"
     },
