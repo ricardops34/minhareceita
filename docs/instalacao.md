@@ -95,6 +95,7 @@ Para facilitar a manutenção, algumas variáveis de ambiente podem ser utilizad
 |---|---|
 | `DATABASE_URL` | URI de acesso ao banco de dados |
 | `PORT` | Porta na qual a API web ficará disponível |
-| `NEW_RELIC_LICENSE_KEY` | Licença no New Relic para monitoramento |
+| `CACHE_SIZE` | Tamanho máximo do cache em MB |
+| `BLOOM_FILTER_SIZE` | Tamanho máximo do bloom filter em MB |
 | `TEST_POSTGRES_URL` | URI de acesso ao banco de dados PostgreSQL para ser utilizado nos testes |
 | `TEST_MONGODB_URL` | URI de acesso ao banco de dados MongoDB para ser utilizado nos testes |

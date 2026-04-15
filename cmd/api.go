@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"codeberg.org/cuducos/minha-receita/api"
 	"github.com/spf13/cobra"
@@ -11,7 +12,7 @@ import (
 const (
 	defaultPort      = "8000"
 	defaultCacheSize = 1 << 5 // 32MB
-	defaultBloomSize = 1 << 5 // 32MB
+	defaultBloomSize = 1 << 6 // 64MB
 	apiHelper        = `
 Starts the web API.
 
@@ -34,13 +35,31 @@ var apiCmd = &cobra.Command{
 	Use:   "api",
 	Short: "Spins up the web API",
 	Long:  apiHelper,
-	RunE: func(_ *cobra.Command, _ []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		var err error
 		if port == "" {
 			port = os.Getenv("PORT")
 		}
 		if port == "" {
 			port = defaultPort
+		}
+		if !cmd.Flags().Changed("cache") {
+			if v := os.Getenv("CACHE_SIZE"); v != "" {
+				n, err := strconv.Atoi(v)
+				if err != nil {
+					return fmt.Errorf("invalid CACHE_SIZE: %w", err)
+				}
+				cacheSize = n
+			}
+		}
+		if !cmd.Flags().Changed("bloom-filter") {
+			if v := os.Getenv("BLOOM_FILTER_SIZE"); v != "" {
+				n, err := strconv.Atoi(v)
+				if err != nil {
+					return fmt.Errorf("invalid BLOOM_FILTER_SIZE: %w", err)
+				}
+				bloomSize = n
+			}
 		}
 		db, err := loadDatabase()
 		if err != nil {
@@ -64,14 +83,14 @@ func apiCLI() *cobra.Command {
 		"cache",
 		"c",
 		defaultCacheSize,
-		fmt.Sprintf("max size in MB for the cache (default %d MB)", defaultCacheSize),
+		fmt.Sprintf("max size in MB for the cache (default CACHE_SIZE environment variable or %d MB)", defaultCacheSize),
 	)
 	apiCmd.Flags().IntVarP(
 		&bloomSize,
 		"bloom-filter",
 		"b",
 		defaultBloomSize,
-		fmt.Sprintf("max size in MB for the bloom filter (default %d MB)", defaultBloomSize),
+		fmt.Sprintf("max size in MB for the bloom filter (default BLOOM_FILTER_SIZE environment variable or %d MB)", defaultBloomSize),
 	)
 	return apiCmd
 }
