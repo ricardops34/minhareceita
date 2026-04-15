@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,10 +17,8 @@ import (
 const (
 	numHashFuncs = 7
 
-	// 32MB filter for ~60M elements with ~10% false positive rate
-	bloomSize = 1 << 28
-
-	// how many CNPJs to request to the database per page to initialize the filter
+	// how many CNPJs to request to the database per page durint the
+	// initialization
 	pageSize = 1 << 18
 
 	// golden ratio for double hashing without allocations
@@ -32,16 +31,21 @@ type database interface {
 
 type Filter struct {
 	db   database
+	size uint64 // in bits (not bytes)
 	bits []uint64
 	ok   atomic.Bool
 	pool sync.Pool
 }
 
-func New(db database) *Filter {
-	s := (bloomSize + 63) / 64 //  ceil(bloomSize / 64) uint64s
-	return &Filter{
+// New creates a new bloom filter with the given size in megabytes. The size is
+// expected in MB.
+func New(db database, size int) *Filter {
+	s := uint64(size) << 23 // MB to bits
+	b := (s + 63) / 64      // ceil(s / 64) uint64s
+	f := &Filter{
 		db:   db,
-		bits: make([]uint64, s),
+		size: s,
+		bits: make([]uint64, b),
 		pool: sync.Pool{
 			New: func() any {
 				s := make([]uint, numHashFuncs)
@@ -49,6 +53,7 @@ func New(db database) *Filter {
 			},
 		},
 	}
+	return f
 }
 
 func (f *Filter) bitPositions(id string, pos []uint) {
@@ -56,7 +61,7 @@ func (f *Filter) bitPositions(id string, pos []uint) {
 	h2 := h1 * goldenRatio
 	for i := range numHashFuncs {
 		h := h1 + uint64(i)*h2
-		pos[i] = uint(h % uint64(bloomSize))
+		pos[i] = uint(h % f.size)
 	}
 }
 
@@ -107,7 +112,12 @@ func (f *Filter) Initialize(ctx context.Context) error {
 	}
 
 	f.ok.Store(true)
-	slog.Info("CNPJ presence filter ready", "count", t, "duration", time.Since(ini))
+	slog.Info("CNPJ presence filter ready",
+		"count", t,
+		"duration", time.Since(ini),
+		"size_mb", f.size>>23, // Convert bits back to MB
+		"error_rate", fmt.Sprintf("%.6f%%", f.errorRate(t)*100),
+	)
 	return nil
 }
 
@@ -130,4 +140,12 @@ func (f *Filter) Exists(id string) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+func (f *Filter) errorRate(total uint64) float64 {
+	if f.size == 0 {
+		return 1.0
+	}
+	h := float64(numHashFuncs)
+	return math.Pow(1.0-math.Exp(-h*float64(total)/float64(f.size)), h)
 }

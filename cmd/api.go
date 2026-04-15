@@ -9,24 +9,26 @@ import (
 )
 
 const (
-	defaultPort = "8000"
-	apiHelper   = `
+	defaultPort      = "8000"
+	defaultCacheSize = 1 << 5 // 32MB
+	defaultBloomSize = 1 << 5 // 32MB
+	apiHelper        = `
 Starts the web API.
 
 Using GODEBUG environment variable changes the HTTP server verbosity (for
 example: http2debug=1 is verbose and http2debug=2 is more verbose, as in
 https://golang.org/pkg/net/http/
 
-The HTTP server is prepared to send logs to New Relic. If the
-NEW_RELIC_LICENSE_KEY environment variable is set, the app automatically
-reports to New Relic. Otherwise, the New Relic wrappers are just ignored.
-
 The HTTP server is prepared to do a host header validation against the value of
 ALLOWED_HOST environment variable. If this variable is not set, this validation
 is skipped.`
 )
 
-var port string
+var (
+	port      string
+	cacheSize int
+	bloomSize int
+)
 
 var apiCmd = &cobra.Command{
 	Use:   "api",
@@ -45,7 +47,7 @@ var apiCmd = &cobra.Command{
 			return fmt.Errorf("could not find database: %w", err)
 		}
 		defer db.Close()
-		return api.Serve(db, port)
+		return api.Serve(db, port, cacheSize, bloomSize)
 	},
 }
 
@@ -56,6 +58,20 @@ func apiCLI() *cobra.Command {
 		"p",
 		"",
 		fmt.Sprintf("web server port (default PORT environment variable or %s)", defaultPort),
+	)
+	apiCmd.Flags().IntVarP(
+		&cacheSize,
+		"cache",
+		"c",
+		defaultCacheSize,
+		fmt.Sprintf("max size in MB for the cache (default %d MB)", defaultCacheSize),
+	)
+	apiCmd.Flags().IntVarP(
+		&bloomSize,
+		"bloom-filter",
+		"b",
+		defaultBloomSize,
+		fmt.Sprintf("max size in MB for the bloom filter (default %d MB)", defaultBloomSize),
 	)
 	return apiCmd
 }

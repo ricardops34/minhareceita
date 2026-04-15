@@ -2,6 +2,7 @@ package bloom
 
 import (
 	"context"
+	"math"
 	"testing"
 )
 
@@ -42,7 +43,7 @@ func TestBloomFilter(t *testing.T) {
 	}
 
 	m := &mockDB{ids: ids}
-	f := New(m)
+	f := New(m, 32)
 
 	ctx := context.Background()
 	if err := f.Initialize(ctx); err != nil {
@@ -73,7 +74,7 @@ func TestBloomFilter(t *testing.T) {
 
 func TestBloomFilterNotReady(t *testing.T) {
 	m := &mockDB{ids: []string{}}
-	f := New(m)
+	f := New(m, 32)
 
 	if f.Ready() {
 		t.Error("expected bloom filter not to be ready before initialization")
@@ -87,7 +88,7 @@ func TestBloomFilterNotReady(t *testing.T) {
 
 func TestBloomFilterEmpty(t *testing.T) {
 	m := &mockDB{ids: []string{}}
-	f := New(m)
+	f := New(m, 32)
 
 	ctx := context.Background()
 	if err := f.Initialize(ctx); err != nil {
@@ -104,5 +105,38 @@ func TestBloomFilterEmpty(t *testing.T) {
 	}
 	if ok {
 		t.Error("expected empty bloom filter to always return false")
+	}
+}
+
+func TestErrorRate(t *testing.T) {
+	m := &mockDB{ids: []string{}}
+
+	t.Run("zero elements yields zero error rate", func(t *testing.T) {
+		f := New(m, 32)
+		if rate := f.errorRate(0); rate != 0.0 {
+			t.Errorf("expected 0.0, got %v", rate)
+		}
+	})
+
+	tt := []struct {
+		name  string
+		size  int
+		total uint64
+		exp   float64
+		ep    float64
+	}{
+		{"60M elements in 32MB", 32, 60_000_000, 0.1935, 0.0001},
+		{"70M elements in 32MB", 32, 70_000_000, 0.2923, 0.0001},
+		{"70M elements in 64MB", 64, 70_000_000, 0.0275, 0.0001},
+		{"70M elements in 16MB", 16, 70_000_000, 0.8318, 0.0001},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			f := New(m, tc.size)
+			rate := f.errorRate(tc.total)
+			if math.Abs(rate-tc.exp) > tc.ep {
+				t.Errorf("want %.4f, got %.4f", tc.exp, rate)
+			}
+		})
 	}
 }

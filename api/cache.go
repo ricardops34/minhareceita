@@ -1,26 +1,37 @@
 package api
 
 import (
-	"log/slog"
+	"fmt"
 
 	"github.com/dgraph-io/ristretto/v2"
+)
+
+const (
+	minCacheSize = 1 << 3 // 8MB
+
+	// average size of a JSON in bytes, eg:
+	// SELECT AVG(octet_length(json::text)) FROM cnpj TABLESAMPLE SYSTEM(0.01);
+	avgSize int64 = 1 << 11
 )
 
 type cache struct {
 	r *ristretto.Cache[string, string]
 }
 
-func newCache() *cache {
+func newCache(size int) (*cache, error) {
+	if size < minCacheSize {
+		return nil, fmt.Errorf("cache size too small, minimum is %dMB", minCacheSize)
+	}
+	c := int64(size) << 20 // convert MB to bytes
 	r, err := ristretto.NewCache(&ristretto.Config[string, string]{
-		NumCounters: 200_000, // 10x the expected max items (20k)
-		MaxCost:     1 << 25, // 32 MB
+		MaxCost:     c,
+		NumCounters: c / avgSize * 10,
 		BufferItems: 64,
 	})
 	if err != nil {
-		slog.Error("could not create cache, running without it", "error", err)
-		return nil
+		return nil, err
 	}
-	return &cache{r}
+	return &cache{r}, nil
 }
 
 func (c *cache) get(key string) (string, bool) {

@@ -223,13 +223,17 @@ func (app *api) allowedHostWrapper(h func(http.ResponseWriter, *http.Request)) f
 }
 
 // Serve spins up the HTTP server.
-func Serve(db database, p string) error {
+func Serve(db database, p string, cacheSize, bloomSize int) error {
 	if !strings.HasPrefix(p, ":") {
 		p = ":" + p
 	}
-	app := api{db: db, host: os.Getenv("ALLOWED_HOST"), cache: newCache()}
+	c, err := newCache(cacheSize)
+	if err != nil {
+		return fmt.Errorf("api could not initialize cache: %w", err)
+	}
+	app := api{db: db, host: os.Getenv("ALLOWED_HOST"), cache: c}
 
-	app.check = bloom.New(db)
+	app.check = bloom.New(db, bloomSize)
 	go func() {
 		ini := time.Now()
 		if err := app.check.Initialize(context.Background()); err != nil {
