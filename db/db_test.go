@@ -20,7 +20,7 @@ type database interface {
 	PostLoad() error
 	Close()
 
-	CreateCompanies([][]string) error
+	CreateCompanies(context.Context, [][]string) error
 	GetCompany(context.Context, string) (string, error)
 
 	CreateExtraIndexes([]string) error

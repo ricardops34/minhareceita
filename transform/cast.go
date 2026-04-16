@@ -56,7 +56,7 @@ type date time.Time
 
 func (d *date) UnmarshalJSON(b []byte) error {
 	s := strings.Trim(string(b), `"`)
-	if s == "" {
+	if s == "" || s == "null" {
 		return nil
 	}
 	t, err := time.Parse(dateOutputFormat, s)

@@ -18,7 +18,7 @@ func (db *testDB) PreLoad() error {
 	return nil
 }
 
-func (db *testDB) CreateCompanies(companies [][]string) error {
+func (db *testDB) CreateCompanies(_ context.Context, companies [][]string) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 	for _, c := range companies {

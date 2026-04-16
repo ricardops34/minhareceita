@@ -33,7 +33,7 @@ func setUpMongo(id, c string) (*MongoDB, error) {
 	if err := db.PreLoad(); err != nil {
 		return nil, fmt.Errorf("expected no error pre load on mongo, got %w", err)
 	}
-	if err := db.CreateCompanies([][]string{{id, c}}); err != nil {
+	if err := db.CreateCompanies(context.Background(), [][]string{{id, c}}); err != nil {
 		return nil, fmt.Errorf("expected no error saving a company to mongo, got %s", err)
 	}
 	if err := db.PostLoad(); err != nil {
@@ -115,7 +115,7 @@ func TestMongoAllCompanies(t *testing.T) {
 	c2 := strings.Replace(c, id, id2, 1)
 	c3 := strings.Replace(c, id, id3, 1)
 
-	if err := m.CreateCompanies([][]string{{id2, c2}, {id3, c3}}); err != nil {
+	if err := m.CreateCompanies(context.Background(), [][]string{{id2, c2}, {id3, c3}}); err != nil {
 		t.Errorf("expected no error saving additional companies to mongo, got %s", err)
 		return
 	}

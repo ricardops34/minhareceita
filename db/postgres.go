@@ -152,13 +152,13 @@ func (p *PostgreSQL) Drop() error {
 // CreateCompanies performs a copy to create a batch of companies in the
 // database. It expects an array and each item should be another array with only
 // two items: the ID and the JSON field values.
-func (p *PostgreSQL) CreateCompanies(batch [][]string) error {
+func (p *PostgreSQL) CreateCompanies(ctx context.Context, batch [][]string) error {
 	b := make([][]any, len(batch))
 	for i, r := range batch {
 		b[i] = []any{r[0], r[1]}
 	}
 	_, err := p.pool.CopyFrom(
-		context.Background(),
+		ctx,
 		pgx.Identifier{p.CompanyTableName},
 		[]string{idFieldName, jsonFieldName},
 		pgx.CopyFromRows(b),

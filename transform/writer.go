@@ -28,13 +28,13 @@ func worker(ctx context.Context, db database, s int, ch <-chan []string) error {
 		case row, ok := <-ch:
 			if !ok {
 				if len(b) > 0 {
-					return db.CreateCompanies(b)
+					return db.CreateCompanies(ctx, b)
 				}
 				return nil
 			}
 			b = append(b, row)
 			if len(b) >= s {
-				if err := db.CreateCompanies(b); err != nil {
+				if err := db.CreateCompanies(ctx, b); err != nil {
 					return err
 				}
 				b = [][]string{}
@@ -79,11 +79,16 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 			return &bytes.Buffer{}
 		},
 	}
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 	ch := make(chan []string, batch*maxDB)
 	var consumers errgroup.Group
 	for range maxDB {
 		consumers.Go(func() error {
-			return worker(ctx, db, batch, ch)
+			if err := worker(ctx, db, batch, ch); err != nil {
+				cancel(err)
+			}
+			return nil
 		})
 	}
 	pths, err := os.ReadDir(ext)
@@ -132,7 +137,7 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 					for {
 						select {
 						case <-ctx.Done():
-							return ctx.Err()
+							return context.Cause(ctx)
 						default:
 							row, err := r.Read()
 							if err != nil {
@@ -158,7 +163,11 @@ func writeJSONs(ctx context.Context, srcs map[string]*source, kv *kv, db databas
 							if err != nil {
 								return err
 							}
-							ch <- []string{c.CNPJ, j}
+							select {
+							case <-ctx.Done():
+								return context.Cause(ctx)
+							case ch <- []string{c.CNPJ, j}:
+							}
 							s := b.read - prev
 							if s > 0 {
 								if err := bar.Add64(s); err != nil {

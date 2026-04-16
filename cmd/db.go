@@ -20,7 +20,7 @@ type database interface {
 	Close()
 	// transform
 	PreLoad() error
-	CreateCompanies([][]string) error
+	CreateCompanies(context.Context, [][]string) error
 	PostLoad() error
 	MetaSave(string, string) error
 	// extra indexes

@@ -87,7 +87,7 @@ func (m *MongoDB) Drop() error {
 }
 
 // CreateCompanies writes a batch of company data to MongoDB
-func (m *MongoDB) CreateCompanies(batch [][]string) error {
+func (m *MongoDB) CreateCompanies(ctx context.Context, batch [][]string) error {
 	if m == nil {
 		return fmt.Errorf("mongodb connection not initialized")
 	}
@@ -108,7 +108,7 @@ func (m *MongoDB) CreateCompanies(batch [][]string) error {
 	if len(cs) == 0 {
 		return nil
 	}
-	_, err := coll.InsertMany(context.Background(), cs)
+	_, err := coll.InsertMany(ctx, cs)
 	if err != nil {
 		return fmt.Errorf("error inserting companies into MongoDB: %w", err)
 	}

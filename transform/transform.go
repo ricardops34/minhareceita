@@ -81,7 +81,7 @@ var extraCounties = map[int]string{
 
 type database interface {
 	PreLoad() error
-	CreateCompanies([][]string) error
+	CreateCompanies(context.Context, [][]string) error
 	PostLoad() error
 	CreateExtraIndexes([]string) error
 	MetaSave(string, string) error

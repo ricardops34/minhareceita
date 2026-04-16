@@ -32,7 +32,7 @@ func setUpPostgres(id, c string) (*PostgreSQL, error) {
 	if err := db.PreLoad(); err != nil {
 		return nil, fmt.Errorf("expected no error pre load on postgres, got %w", err)
 	}
-	if err := db.CreateCompanies([][]string{{id, c}}); err != nil {
+	if err := db.CreateCompanies(context.Background(), [][]string{{id, c}}); err != nil {
 		return nil, fmt.Errorf("expected no error saving a company to postgres, got %w", err)
 	}
 	if err := db.PostLoad(); err != nil {
@@ -117,7 +117,7 @@ func TestPostgresAllCompanies(t *testing.T) {
 	c2 := strings.Replace(c, id, id2, 1)
 	c3 := strings.Replace(c, id, id3, 1)
 
-	if err := pg.CreateCompanies([][]string{{id2, c2}, {id3, c3}}); err != nil {
+	if err := pg.CreateCompanies(context.Background(), [][]string{{id2, c2}, {id3, c3}}); err != nil {
 		t.Errorf("expected no error saving additional companies to postgres, got %s", err)
 		return
 	}
