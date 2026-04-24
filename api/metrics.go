@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	metricLabels = []string{"method", "status_code", "endpoint"}
-	requestCount = promauto.NewCounterVec(prometheus.CounterOpts{
+	metricLabels    = []string{"method", "status_code", "endpoint"}
+	bandwidthLabels = []string{"method", "endpoint"}
+	requestCount    = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "total_requests",
 		Help: "The total number of requests served",
 	}, metricLabels)
@@ -39,6 +40,14 @@ var (
 		Name: "bloom_filter_build_duration_seconds",
 		Help: "How long it took to build the bloom filter (seconds)",
 	})
+	requestBytes = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "request_bytes_total",
+		Help: "The total number of bytes received in request bodies",
+	}, bandwidthLabels)
+	responseBytes = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "response_bytes_total",
+		Help: "The total number of bytes sent in response bodies",
+	}, bandwidthLabels)
 )
 
 func registerMetric(e, m string, s int, i int64) {

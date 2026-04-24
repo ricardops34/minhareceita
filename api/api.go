@@ -262,7 +262,7 @@ func Serve(db database, p string, cacheSize, bloomSize int) error {
 		Addr:         p,
 		ReadTimeout:  timeout * 2,
 		WriteTimeout: timeout * 2,
-		Handler:      gzhttp.GzipHandler(http.DefaultServeMux),
+		Handler:      bandwidthMiddleware(gzhttp.GzipHandler(http.DefaultServeMux)),
 	}
 	slog.Info(fmt.Sprintf("Serving at http://0.0.0.0%s", p))
 	return s.ListenAndServe()
