@@ -18,6 +18,7 @@ import (
 	"codeberg.org/cuducos/minha-receita/bloom"
 	"codeberg.org/cuducos/minha-receita/db"
 	"github.com/cuducos/go-cnpj"
+	"github.com/klauspost/compress/gzhttp"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -257,7 +258,12 @@ func Serve(db database, p string, cacheSize, bloomSize int) error {
 		http.HandleFunc(r.path, app.allowedHostWrapper(r.handler))
 	}
 
-	s := &http.Server{Addr: p, ReadTimeout: timeout * 2, WriteTimeout: timeout * 2}
+	s := &http.Server{
+		Addr:         p,
+		ReadTimeout:  timeout * 2,
+		WriteTimeout: timeout * 2,
+		Handler:      gzhttp.GzipHandler(http.DefaultServeMux),
+	}
 	slog.Info(fmt.Sprintf("Serving at http://0.0.0.0%s", p))
 	return s.ListenAndServe()
 }
