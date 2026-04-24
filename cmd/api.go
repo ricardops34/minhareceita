@@ -83,14 +83,14 @@ func apiCLI() *cobra.Command {
 		"cache",
 		"c",
 		defaultCacheSize,
-		fmt.Sprintf("max size in MB for the cache (default CACHE_SIZE environment variable or %d MB)", defaultCacheSize),
+		fmt.Sprintf("max size in MB for the cache, use 0 to disable (default CACHE_SIZE environment variable or %d MB)", defaultCacheSize),
 	)
 	apiCmd.Flags().IntVarP(
 		&bloomSize,
 		"bloom-filter",
 		"b",
 		defaultBloomSize,
-		fmt.Sprintf("max size in MB for the bloom filter (default BLOOM_FILTER_SIZE environment variable or %d MB)", defaultBloomSize),
+		fmt.Sprintf("max size in MB for the bloom filter, use 0 to disable (default BLOOM_FILTER_SIZE environment variable or %d MB)", defaultBloomSize),
 	)
 	return apiCmd
 }

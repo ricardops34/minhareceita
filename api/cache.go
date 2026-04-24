@@ -19,6 +19,9 @@ type cache struct {
 }
 
 func newCache(size int) (*cache, error) {
+	if size == 0 {
+		return nil, nil
+	}
 	if size < minCacheSize {
 		return nil, fmt.Errorf("cache size too small, minimum is %dMB", minCacheSize)
 	}

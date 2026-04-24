@@ -234,17 +234,19 @@ func Serve(db database, p string, cacheSize, bloomSize int) error {
 	}
 	app := api{db: db, host: os.Getenv("ALLOWED_HOST"), cache: c}
 
-	app.check = bloom.New(db, bloomSize)
-	go func() {
-		ini := time.Now()
-		if err := app.check.Initialize(context.Background()); err != nil {
-			slog.Error("could not Initialize bloom filter", "error", err)
-		}
-		if app.check.Ready() {
-			bloomFilterBuildDuration.Set(time.Since(ini).Seconds())
-			bloomFilterReady.Set(1)
-		}
-	}()
+	if bloomSize > 0 {
+		app.check = bloom.New(db, bloomSize)
+		go func() {
+			ini := time.Now()
+			if err := app.check.Initialize(context.Background()); err != nil {
+				slog.Error("could not Initialize bloom filter", "error", err)
+			}
+			if app.check.Ready() {
+				bloomFilterBuildDuration.Set(time.Since(ini).Seconds())
+				bloomFilterReady.Set(1)
+			}
+		}()
+	}
 
 	for _, r := range []struct {
 		path    string
