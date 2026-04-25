@@ -14,10 +14,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cuducos/go-cnpj"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/encoding/charmap"
+	"tangled.org/cuducos.me/go-cnpj"
 )
 
 var multipleSpaces = regexp.MustCompile(`\s{2,}`)

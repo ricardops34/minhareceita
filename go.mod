@@ -5,7 +5,6 @@ go 1.26.0
 require (
 	github.com/avast/retry-go/v4 v4.7.0
 	github.com/cespare/xxhash/v2 v2.3.0
-	github.com/cuducos/go-cnpj v0.1.2
 	github.com/dgraph-io/badger/v4 v4.9.1
 	github.com/dgraph-io/ristretto/v2 v2.4.0
 	github.com/huandu/go-sqlbuilder v1.40.2
@@ -17,6 +16,7 @@ require (
 	go.mongodb.org/mongo-driver/v2 v2.5.1
 	golang.org/x/sync v0.20.0
 	golang.org/x/text v0.36.0
+	tangled.org/cuducos.me/go-cnpj v0.1.3
 )
 
 require (

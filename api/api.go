@@ -17,9 +17,9 @@ import (
 
 	"codeberg.org/cuducos/minha-receita/bloom"
 	"codeberg.org/cuducos/minha-receita/db"
-	"github.com/cuducos/go-cnpj"
 	"github.com/klauspost/compress/gzhttp"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"tangled.org/cuducos.me/go-cnpj"
 )
 
 const (

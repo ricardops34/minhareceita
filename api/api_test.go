@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"codeberg.org/cuducos/minha-receita/db"
-	"github.com/cuducos/go-cnpj"
+	"tangled.org/cuducos.me/go-cnpj"
 )
 
 type mockDatabase struct{}

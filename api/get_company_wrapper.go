@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/avast/retry-go/v4"
-	"github.com/cuducos/go-cnpj"
+	"tangled.org/cuducos.me/go-cnpj"
 )
 
 const (
