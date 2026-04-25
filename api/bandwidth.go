@@ -17,11 +17,25 @@ func (w *bandwidthResponseWriter) Write(b []byte) (int, error) {
 
 // bandwidthMiddleware wraps an http.Handler to track inbound and outbound
 // bandwidth.
+func normalizeEndpoint(r *http.Request) string {
+	switch r.URL.Path {
+	case "/":
+		if r.URL.RawQuery != "" {
+			return "paginatedSearch"
+		}
+		return "root"
+	case "/updated", "/healthz", "/metrics":
+		return r.URL.Path
+	default:
+		return "singleCompany"
+	}
+}
+
 func bandwidthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b := &bandwidthResponseWriter{ResponseWriter: w}
 		next.ServeHTTP(b, r)
-		registerBandwidth(r.URL.Path, r.Method, int(r.ContentLength), b.bytes)
+		registerBandwidth(normalizeEndpoint(r), r.Method, int(r.ContentLength), b.bytes)
 	})
 }
 
