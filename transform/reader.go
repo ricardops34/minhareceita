@@ -232,9 +232,9 @@ func unzipMainArchive(pth, dir string, bar *progressbar.ProgressBar) error {
 
 func loadIBGEMunicipalitiesFromURL(ctx context.Context, url string, src *source, bar *progressbar.ProgressBar, kv *kv) error {
 	if bar != nil {
-		defer func() {
-			bar.AddMax(-1) // compensate for the extra byte added when creating the bar
-		}()
+		defer func(b *progressbar.ProgressBar) {
+			b.AddMax(-1) // compensate for the extra byte added when creating the bar
+		}(bar)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -254,6 +254,8 @@ func loadIBGEMunicipalitiesFromURL(ctx context.Context, url string, src *source,
 	}
 	if bar != nil && resp.ContentLength > 0 {
 		bar.AddMax64(resp.ContentLength)
+	} else {
+		bar = nil
 	}
 	r := reader{url, src}
 	return r.readFromReader(ctx, resp.Body, bar, kv)
