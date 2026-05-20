@@ -108,9 +108,22 @@ func (m *MongoDB) CreateCompanies(ctx context.Context, batch [][]string) error {
 	if len(cs) == 0 {
 		return nil
 	}
-	_, err := coll.InsertMany(ctx, cs)
-	if err != nil {
-		return fmt.Errorf("error inserting companies into MongoDB: %w", err)
+
+	// MongoDB limits the size of a single request / wire message payload (typically 48MB).
+	// When using large batch sizes (such as the default 65536), sending all
+	// documents in a single InsertMany call can exceed this size limit,
+	// causing MongoDB to terminate the connection and leading to "broken pipe" errors.
+	// Splitting the batch into smaller, safer chunks avoids this limitation.
+	const chunkSize = 2000
+	for i := 0; i < len(cs); i += chunkSize {
+		end := i + chunkSize
+		if end > len(cs) {
+			end = len(cs)
+		}
+		_, err := coll.InsertMany(ctx, cs[i:end])
+		if err != nil {
+			return fmt.Errorf("error inserting companies into MongoDB: %w", err)
+		}
 	}
 	return nil
 }
