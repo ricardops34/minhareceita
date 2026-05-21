@@ -114,7 +114,7 @@ func (m *MongoDB) CreateCompanies(ctx context.Context, batch [][]string) error {
 	// documents in a single InsertMany call can exceed this size limit,
 	// causing MongoDB to terminate the connection and leading to "broken pipe" errors.
 	// Splitting the batch into smaller, safer chunks avoids this limitation.
-	const cksz = 15000 // +- 22.5 MB
+	const cksz = 30000
 	for i := 0; i < len(cs); i += cksz {
 		end := i + cksz
 		if end > len(cs) {
