@@ -72,7 +72,7 @@ func transformCLI() *cobra.Command {
 	}
 
 	transformCmd.Flags().BoolVarP(&cleanUp, "clean-up", "c", cleanUp, "drop & recreate the database table before starting")
-	transformCmd.Flags().IntVarP(&defaultBatchSize, "batch-size", "b", transform.BatchSize, "size of the batch to save to the database")
+	transformCmd.Flags().IntVarP(&defaultBatchSize, "batch-size", "b", defaultBatchSize, "size of the batch to save to the database")
 	transformCmd.Flags().BoolVarP(&noPrivacy, "no-privacy", "p", noPrivacy, "include email addresses, CPF and other PII in the JSON data")
 	return transformCmd
 }
