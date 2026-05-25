@@ -22,7 +22,7 @@ The transformation process is divided into three steps:
 
 var (
 	maxParallelDBQueries int
-	defaultBatchSize     int
+	batchSize            int
 	cleanUp              bool
 	noPrivacy            bool
 )
@@ -45,7 +45,7 @@ var transformCmd = &cobra.Command{
 				return err
 			}
 		}
-		return transform.Transform(dir, db, defaultBatchSize, maxParallelDBQueries, !noPrivacy)
+		return transform.Transform(dir, db, batchSize, maxParallelDBQueries, !noPrivacy)
 	},
 }
 
@@ -67,13 +67,13 @@ func transformCLI() *cobra.Command {
 	)
 
 	u := os.Getenv("DATABASE_URL")
-	defaultBatchSize = min(transform.MongoDBBatchSize, transform.PostgresBatchSize) // start with the lower one
+	batchSize = min(transform.MongoDBBatchSize, transform.PostgresBatchSize) // start with the lower one
 	if strings.HasPrefix(u, "postgres://") || strings.HasPrefix(u, "postgresql://") {
-		defaultBatchSize = transform.PostgresBatchSize
+		batchSize = transform.PostgresBatchSize
 	}
 
 	transformCmd.Flags().BoolVarP(&cleanUp, "clean-up", "c", cleanUp, "drop & recreate the database table before starting")
-	transformCmd.Flags().IntVarP(&defaultBatchSize, "batch-size", "b", defaultBatchSize, "size of the batch to save to the database")
+	transformCmd.Flags().IntVarP(&batchSize, "batch-size", "b", batchSize, "size of the batch to save to the database")
 	transformCmd.Flags().BoolVarP(&noPrivacy, "no-privacy", "p", noPrivacy, "include email addresses, CPF and other PII in the JSON data")
 	return transformCmd
 }
