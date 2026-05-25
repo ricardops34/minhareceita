@@ -66,8 +66,9 @@ func transformCLI() *cobra.Command {
 		"maximum parallel database queries",
 	)
 
-	defaultBatchSize = min(transform.MongoDBBatchSize, transform.PostgresBatchSize) // cautela de pegar o padrão menor
-	if strings.HasPrefix(os.Getenv("DATABASE_URL"), "postgres://") {
+	u := os.Getenv("DATABASE_URL")
+	defaultBatchSize = min(transform.MongoDBBatchSize, transform.PostgresBatchSize) // start with the lower one
+	if strings.HasPrefix(u, "postgres://") || strings.HasPrefix(u, "postgresql://") {
 		defaultBatchSize = transform.PostgresBatchSize
 	}
 
