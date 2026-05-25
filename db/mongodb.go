@@ -108,6 +108,7 @@ func (m *MongoDB) CreateCompanies(ctx context.Context, batch [][]string) error {
 	if len(cs) == 0 {
 		return nil
 	}
+
 	_, err := coll.InsertMany(ctx, cs)
 	if err != nil {
 		return fmt.Errorf("error inserting companies into MongoDB: %w", err)

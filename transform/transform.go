@@ -16,9 +16,13 @@ import (
 )
 
 const (
-	// BatchSize determines the size of the batches used to create the initial JSON
+	// PostgresBatchSize determines the size of the batches used to create the initial JSON in Postgres
 	// data in the database.
-	BatchSize = 65536
+	PostgresBatchSize = 65536
+
+	// MongoDBBatchSize determines the size of the batches used to create the initial JSON in MongoDB
+	// data in the database.
+	MongoDBBatchSize = 16384
 
 	// MaxParallelDBQueries is the default for maximum number of parallels save
 	// queries sent to the database

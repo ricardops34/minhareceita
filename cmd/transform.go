@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"codeberg.org/cuducos/minha-receita/transform"
 	"github.com/spf13/cobra"
@@ -20,7 +22,7 @@ The transformation process is divided into three steps:
 
 var (
 	maxParallelDBQueries int
-	batchSize            int
+	defaultBatchSize     int
 	cleanUp              bool
 	noPrivacy            bool
 )
@@ -43,7 +45,7 @@ var transformCmd = &cobra.Command{
 				return err
 			}
 		}
-		return transform.Transform(dir, db, batchSize, maxParallelDBQueries, !noPrivacy)
+		return transform.Transform(dir, db, defaultBatchSize, maxParallelDBQueries, !noPrivacy)
 	},
 }
 
@@ -63,8 +65,15 @@ func transformCLI() *cobra.Command {
 		transform.MaxParallelDBQueries,
 		"maximum parallel database queries",
 	)
+
+	u := os.Getenv("DATABASE_URL")
+	defaultBatchSize = min(transform.MongoDBBatchSize, transform.PostgresBatchSize) // start with the lower one
+	if strings.HasPrefix(u, "postgres://") || strings.HasPrefix(u, "postgresql://") {
+		defaultBatchSize = transform.PostgresBatchSize
+	}
+
 	transformCmd.Flags().BoolVarP(&cleanUp, "clean-up", "c", cleanUp, "drop & recreate the database table before starting")
-	transformCmd.Flags().IntVarP(&batchSize, "batch-size", "b", transform.BatchSize, "size of the batch to save to the database")
+	transformCmd.Flags().IntVarP(&defaultBatchSize, "batch-size", "b", defaultBatchSize, "size of the batch to save to the database")
 	transformCmd.Flags().BoolVarP(&noPrivacy, "no-privacy", "p", noPrivacy, "include email addresses, CPF and other PII in the JSON data")
 	return transformCmd
 }
