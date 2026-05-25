@@ -26,7 +26,7 @@ const (
 
 	// MongoDBBatchSize determines the size of the batches used to create the initial JSON in MongoDB
 	// data in the database.
-	MongoDBBatchSize = 32768
+	MongoDBBatchSize = 21000
 
 	// MaxParallelDBQueries is the default for maximum number of parallels save
 	// queries sent to the database
