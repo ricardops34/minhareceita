@@ -13,6 +13,16 @@ LABEL org.opencontainers.image.source="https://codeberg.org/cuducos/minha-receit
 LABEL org.opencontainers.image.title="Minha Receita"
 
 RUN apt-get update && \
+    # Security updates
+    apt-get upgrade -y \
+        bsdutils \
+        coreutils \
+        libc-bin \
+        libc6 \
+        libsqlite3-0 \
+        libsystemd0 \
+        libudev1 \
+        util-linux && \
     apt-get install -y --no-install-recommends ca-certificates && \
     update-ca-certificates && \
     apt-get autoremove -y && \
