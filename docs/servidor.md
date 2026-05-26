@@ -15,6 +15,22 @@ Usando PostgreSQL, a URI será `postgres://minhareceita:minhareceita@localhost:5
 
 Usando MongoDB, a URI será `mongodb://minhareceita:minhareceita@localhost:27017/minhareceita?authSource=admin`.
 
+### Provisionando o banco de dados
+
+O comando `provision` instala e configura o PostgreSQL em um servidor remoto via SSH e exibe as credenciais de acesso.
+
+* [Pulumi CLI](https://www.pulumi.com/)
+* servidor Debian ou Ubuntu
+* acesso SSH (acesso com senha não é permitido) e acesso `sudo` ao servidor de destino
+
+```console
+$ minha-receita provision root@200.100.0.1
+```
+
+O comando cria dois usuários no Postgres: `etl` (com permissões de escrita) e `web` (apenas leitura), ambos tem senhas distintas e aleatórias que são exibidas apenas uma única vez ao final do comando.
+
+As URIs exibidas podem ser usadas nas variáveis `DATABASE_URL` do ETL e da API web.
+
 ## Dados
 
 Os dados são disponibilizados mensalmente pela [Receita Federal](https://dados.gov.br/dados/conjuntos-dados/cadastro-nacional-da-pessoa-juridica-cnpj). Para o comando `transform` funcionar, é necessário um diretório contendo:

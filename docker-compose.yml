@@ -51,3 +51,23 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: minhareceita
     ports:
       - "27117:27017"
+
+  provision_test:
+    image: debian:trixie-slim
+    ports:
+      - "2222:22"
+    volumes:
+      - ~/.ssh:/tmp/host-ssh:ro
+    command:
+      - bash
+      - -c
+      - |
+        apt-get update &&
+        apt-get install -y openssh-server sudo &&
+        mkdir -p /root/.ssh /run/sshd &&
+        ssh-keygen -A &&
+        sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config &&
+        cat /tmp/host-ssh/*.pub > /root/.ssh/authorized_keys &&
+        chown root:root /root/.ssh/authorized_keys &&
+        chmod 600 /root/.ssh/authorized_keys &&
+        /usr/sbin/sshd -D

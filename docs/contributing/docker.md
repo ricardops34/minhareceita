@@ -38,3 +38,13 @@ As configurações padrão desses bancos são:
 Se for utilizar Docker para rodar o projeto todo, copie o arquivo `.env.sample` como `.env` — e ajuste, se necessário.
 
 O banco de dados de sua escolha (padrão, que persiste dados; ou de testes, que não persiste dados) tem que ser [iniciado isoladamente](#apenas-para-o-banco-de-dados).
+
+## Testando o provisionamento do servidor
+
+O serviço `provision_test` cria um container Debian com SSH para testar o comando `provision`:
+
+```console
+$ docker compose up -d provision_test
+$ docker compose exec -T provision_test hostname -i  # anote o IP
+$ go run . provision root@<ip>
+```
