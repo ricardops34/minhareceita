@@ -16,7 +16,7 @@ steps:
       tags:
         - ${CI_COMMIT_SHA}
         - latest
-      cache: true
+      cache: false
       username:
         from_secret: CONTAINER_REGISTRY_USERNAME
       password:
