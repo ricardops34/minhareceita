@@ -7,6 +7,7 @@ site_dir = "site"
 nav = [
   "index.md",
   "como-usar.md",
+  "grafo.md",
   "dicionario.md",
   "instalacao.md",
   "servidor.md",

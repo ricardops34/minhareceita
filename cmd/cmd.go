@@ -84,6 +84,7 @@ func CLI() *cobra.Command {
 	}
 	rootCmd.AddCommand(
 		apiCLI(),
+		graphCLI(),
 		createCmd,
 		dropCmd,
 		createExtraIndexesCmd,

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"encoding/json/v2"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -20,13 +21,11 @@ import (
 )
 
 const (
-	companyTableName = "cnpj"
-	metaTableName    = "meta"
-	cursorFieldName  = "cursor"
-	idFieldName      = "id"
-	jsonFieldName    = "json"
-	keyFieldName     = "key"
-	valueFieldName   = "value"
+	cursorFieldName = "cursor"
+	idFieldName     = "id"
+	jsonFieldName   = "json"
+	keyFieldName    = "key"
+	valueFieldName  = "value"
 )
 
 //go:embed postgres
@@ -80,19 +79,22 @@ func (e *ExtraIndex) NestedPath() string {
 
 // PostgreSQL database interface.
 type PostgreSQL struct {
-	pool             *pgxpool.Pool
-	uri              string
-	schema           string
-	getCompanyQuery  string
-	metaReadQuery    string
-	CompanyTableName string
-	MetaTableName    string
-	CursorFieldName  string
-	IDFieldName      string
-	JSONFieldName    string
-	KeyFieldName     string
-	ValueFieldName   string
-	ExtraIndexes     []ExtraIndex
+	pool                     *pgxpool.Pool
+	uri                      string
+	schema                   string
+	getCompanyQuery          string
+	getCompanyPartnersQuery  string
+	getPartnerCompaniesQuery string
+	metaReadQuery            string
+	CompanyTableName         string
+	GraphTableName           string
+	MetaTableName            string
+	CursorFieldName          string
+	IDFieldName              string
+	JSONFieldName            string
+	KeyFieldName             string
+	ValueFieldName           string
+	ExtraIndexes             []ExtraIndex
 }
 
 func (p *PostgreSQL) renderTemplate(key string) (string, error) {
@@ -116,6 +118,11 @@ func (p *PostgreSQL) Close() { p.pool.Close() }
 // CompanyTableFullName is the name of the schame and table in dot-notation.
 func (p *PostgreSQL) CompanyTableFullName() string {
 	return fmt.Sprintf("%s.%s", p.schema, p.CompanyTableName)
+}
+
+// GraphTableFullName is the name of the schema and table in dot-notation.
+func (p *PostgreSQL) GraphTableFullName() string {
+	return fmt.Sprintf("%s.%s", p.schema, p.GraphTableName)
 }
 
 // MetaTableFullName is the name of the schame and table in dot-notation.
@@ -413,6 +420,7 @@ func NewPostgreSQL(uri, schema string) (PostgreSQL, error) {
 		uri:              uri,
 		schema:           schema,
 		CompanyTableName: companyTableName,
+		GraphTableName:   graphTableName,
 		MetaTableName:    metaTableName,
 		CursorFieldName:  cursorFieldName,
 		IDFieldName:      idFieldName,
@@ -423,6 +431,14 @@ func NewPostgreSQL(uri, schema string) (PostgreSQL, error) {
 	p.getCompanyQuery, err = p.renderTemplate("get")
 	if err != nil {
 		return PostgreSQL{}, fmt.Errorf("error rendering get template: %w", err)
+	}
+	p.getCompanyPartnersQuery, err = p.renderTemplate("get_company_partners")
+	if err != nil {
+		return PostgreSQL{}, fmt.Errorf("error rendering get_company_partners template: %w", err)
+	}
+	p.getPartnerCompaniesQuery, err = p.renderTemplate("get_partner_companies")
+	if err != nil {
+		return PostgreSQL{}, fmt.Errorf("error rendering get_partner_companies template: %w", err)
 	}
 	p.metaReadQuery, err = p.renderTemplate("meta_read")
 	if err != nil {
@@ -435,4 +451,82 @@ func NewPostgreSQL(uri, schema string) (PostgreSQL, error) {
 		return PostgreSQL{}, fmt.Errorf("could not connect to postgres: %w", err)
 	}
 	return p, nil
+}
+
+// CreateGraphTable creates the graph table.
+func (p *PostgreSQL) CreateGraphTable() error {
+	slog.Info("Creating graph table")
+	s, err := p.renderTemplate("graph")
+	if err != nil {
+		return fmt.Errorf("error rendering graph template: %w", err)
+	}
+	if _, err := p.pool.Exec(context.Background(), s); err != nil {
+		return fmt.Errorf("error creating graph table with: %s\n%w", s, err)
+	}
+	return nil
+}
+
+// GetCompanyPartners returns the partners of a company.
+func (p *PostgreSQL) GetCompanyPartners(ctx context.Context, id string) (string, error) {
+	rows, err := p.pool.Query(ctx, p.getCompanyPartnersQuery, id)
+	if err != nil {
+		return "", fmt.Errorf("error looking for company partners %s: %w", id, err)
+	}
+	rs, err := pgx.CollectRows(rows, pgx.RowToStructByPos[companyPartnerRecord])
+	if err != nil {
+		return "", fmt.Errorf("error reading company partners %s: %w", id, err)
+	}
+	if len(rs) == 0 {
+		return "", fmt.Errorf("company %s not found in graph", id)
+	}
+	resp := companyPartnersResponse{
+		CompanyID: id,
+		Name:      rs[0].CompanyName,
+	}
+	for _, r := range rs {
+		p := graphPartner{PartnerID: r.PartnerID}
+		if r.PartnerType != 1 {
+			p.Name = r.PartnerName
+			p.CPF = r.PartnerCNPF
+		}
+		resp.Partners = append(resp.Partners, p)
+	}
+	b, err := json.Marshal(resp)
+	if err != nil {
+		return "", fmt.Errorf("error marshalling company partners %s: %w", id, err)
+	}
+	return string(b), nil
+}
+
+// GetPartnerCompanies returns the companies associated with a partner.
+func (p *PostgreSQL) GetPartnerCompanies(ctx context.Context, id string) (string, error) {
+	rows, err := p.pool.Query(ctx, p.getPartnerCompaniesQuery, id)
+	if err != nil {
+		return "", fmt.Errorf("error looking for partner companies %s: %w", id, err)
+	}
+	rs, err := pgx.CollectRows(rows, pgx.RowToStructByPos[partnerCompanyRecord])
+	if err != nil {
+		return "", fmt.Errorf("error reading partner companies %s: %w", id, err)
+	}
+	if len(rs) == 0 {
+		return "", fmt.Errorf("partner %s not found in graph", id)
+	}
+	resp := partnerCompaniesResponse{
+		PartnerID: id,
+	}
+	if rs[0].PartnerType != 1 {
+		resp.Name = rs[0].PartnerName
+		resp.CPF = rs[0].PartnerCNPF
+	}
+	for _, r := range rs {
+		resp.Companies = append(resp.Companies, graphCompany{
+			CNPJ: r.CompanyID,
+			Name: r.CompanyName,
+		})
+	}
+	b, err := json.Marshal(resp)
+	if err != nil {
+		return "", fmt.Errorf("error marshalling partner companies %s: %w", id, err)
+	}
+	return string(b), nil
 }

@@ -392,3 +392,134 @@ func (m *MongoDB) AllCompanies(ctx context.Context, cursor *string, limit uint32
 	cur := docs[len(docs)-1].Lookup("_id").ObjectID().Hex()
 	return ids, &cur, nil
 }
+
+// CreateGraphTable creates the graph collection.
+func (m *MongoDB) CreateGraphTable() error {
+	ns, err := m.db.ListCollectionNames(context.Background(), bson.M{"name": graphTableName})
+	if err != nil {
+		return fmt.Errorf("error listing collections: %w", err)
+	}
+	if len(ns) > 0 {
+		return nil
+	}
+	slog.Info("Creating", "collection", graphTableName)
+	coll := m.db.Collection(companyTableName)
+	pipeline := mongo.Pipeline{
+		{{Key: "$unwind", Value: "$json.qsa"}},
+		{{Key: "$project", Value: bson.D{
+			{Key: "_id", Value: 0},
+			{Key: "company_id", Value: "$id"},
+			{Key: "partner_id", Value: bson.D{{Key: "$cond", Value: bson.D{
+				{Key: "if", Value: bson.D{{Key: "$eq", Value: bson.A{"$json.qsa.identificador_de_socio", 1}}}},
+				{Key: "then", Value: "$json.qsa.cnpj_cpf_do_socio"},
+				{Key: "else", Value: bson.D{{Key: "$md5", Value: bson.D{{Key: "$concat", Value: bson.A{"$json.qsa.cnpj_cpf_do_socio", "$json.qsa.nome_socio"}}}}}},
+			}}}},
+			{Key: "company_name", Value: "$json.razao_social"},
+			{Key: "partner_name", Value: "$json.qsa.nome_socio"},
+			{Key: "partner_cnpf", Value: "$json.qsa.cnpj_cpf_do_socio"},
+			{Key: "partner_type", Value: "$json.qsa.identificador_de_socio"},
+		}}},
+		{{Key: "$merge", Value: bson.D{
+			{Key: "into", Value: graphTableName},
+			{Key: "whenMatched", Value: "replace"},
+		}}},
+	}
+	_, err = coll.Aggregate(context.Background(), pipeline)
+	if err != nil {
+		return fmt.Errorf("error creating graph collection: %w", err)
+	}
+
+	g := m.db.Collection(graphTableName)
+	idxs := []mongo.IndexModel{
+		{Keys: bson.D{{Key: "company_id", Value: 1}}},
+		{Keys: bson.D{{Key: "partner_id", Value: 1}}},
+	}
+	_, err = g.Indexes().CreateMany(context.Background(), idxs)
+	if err != nil {
+		return fmt.Errorf("error creating indexes for %s: %w", graphTableName, err)
+	}
+	return nil
+}
+
+// GetCompanyPartners returns the partners of a company.
+func (m *MongoDB) GetCompanyPartners(ctx context.Context, id string) (string, error) {
+	coll := m.db.Collection(graphTableName)
+	cur, err := coll.Find(ctx, bson.M{"company_id": id})
+	if err != nil {
+		return "", fmt.Errorf("error looking for company partners %s: %w", id, err)
+	}
+	defer func() {
+		if err := cur.Close(ctx); err != nil {
+			slog.Warn("could not close database cursor", "error", err)
+		}
+	}()
+
+	var rs []companyPartnerRecord
+	if err := cur.All(ctx, &rs); err != nil {
+		return "", fmt.Errorf("error reading company partners %s: %w", id, err)
+	}
+	if len(rs) == 0 {
+		return "", fmt.Errorf("company %s not found in graph", id)
+	}
+
+	resp := companyPartnersResponse{
+		CompanyID: id,
+		Name:      rs[0].CompanyName,
+	}
+	for _, r := range rs {
+		p := graphPartner{PartnerID: r.PartnerID}
+		if r.PartnerType != 1 {
+			p.Name = r.PartnerName
+			p.CPF = r.PartnerCNPF
+		}
+		resp.Partners = append(resp.Partners, p)
+	}
+
+	b, err := json.Marshal(resp)
+	if err != nil {
+		return "", fmt.Errorf("error marshalling company partners %s: %w", id, err)
+	}
+	return string(b), nil
+}
+
+// GetPartnerCompanies returns the companies associated with a partner.
+func (m *MongoDB) GetPartnerCompanies(ctx context.Context, id string) (string, error) {
+	coll := m.db.Collection(graphTableName)
+	cur, err := coll.Find(ctx, bson.M{"partner_id": id})
+	if err != nil {
+		return "", fmt.Errorf("error looking for partner companies %s: %w", id, err)
+	}
+	defer func() {
+		if err := cur.Close(ctx); err != nil {
+			slog.Warn("could not close database cursor", "error", err)
+		}
+	}()
+
+	var rs []partnerCompanyRecord
+	if err := cur.All(ctx, &rs); err != nil {
+		return "", fmt.Errorf("error reading partner companies %s: %w", id, err)
+	}
+	if len(rs) == 0 {
+		return "", fmt.Errorf("partner %s not found in graph", id)
+	}
+
+	resp := partnerCompaniesResponse{
+		PartnerID: id,
+	}
+	if rs[0].PartnerType != 1 {
+		resp.Name = rs[0].PartnerName
+		resp.CPF = rs[0].PartnerCNPF
+	}
+	for _, r := range rs {
+		resp.Companies = append(resp.Companies, graphCompany{
+			CNPJ: r.CompanyID,
+			Name: r.CompanyName,
+		})
+	}
+
+	b, err := json.Marshal(resp)
+	if err != nil {
+		return "", fmt.Errorf("error marshalling partner companies %s: %w", id, err)
+	}
+	return string(b), nil
+}
