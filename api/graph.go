@@ -103,6 +103,9 @@ func ServeGraph(db graphDatabase, p string) error {
 	app := graphAPI{db: db}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", app.handler)
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 
 	s := &http.Server{
 		Addr:         p,

@@ -5,7 +5,7 @@ O comando `graph` é experimental e permite explorar as relações entre quadro 
 !!! info "Funcionalidade experimental"
     Esta é uma funcionalidade experimental e pode sofrer alterações, inclusive ser retirada do ar sem aviso prévio.
 
-A API do grafo está disponível em `https://grafo.minhareceita.org/`.
+A API do grafo está disponível em `https://grafo.minhareceita.org/` e um app experimental utilizando essa API é o [Meu Garfo](https://cuducos.tngl.io/meu-garfo/) ([código fonte](https://tangled.org/cuducos.me/meu-garfo)).
 
 ## Como usar
 
