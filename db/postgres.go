@@ -78,21 +78,21 @@ func (e *ExtraIndex) NestedPath() string {
 
 // PostgreSQL database interface.
 type PostgreSQL struct {
-	pool                     *pgxpool.Pool
-	uri                      string
-	schema                   string
-	getCompanyQuery          string
-	getNeighborsQuery        string
-	metaReadQuery            string
-	CompanyTableName         string
-	GraphTableName           string
-	MetaTableName            string
-	CursorFieldName          string
-	IDFieldName              string
-	JSONFieldName            string
-	KeyFieldName             string
-	ValueFieldName           string
-	ExtraIndexes             []ExtraIndex
+	pool              *pgxpool.Pool
+	uri               string
+	schema            string
+	getCompanyQuery   string
+	getNeighborsQuery string
+	metaReadQuery     string
+	CompanyTableName  string
+	GraphTableName    string
+	MetaTableName     string
+	CursorFieldName   string
+	IDFieldName       string
+	JSONFieldName     string
+	KeyFieldName      string
+	ValueFieldName    string
+	ExtraIndexes      []ExtraIndex
 }
 
 func (p *PostgreSQL) renderTemplate(key string) (string, error) {
