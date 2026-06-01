@@ -39,6 +39,7 @@ func (mockDatabase) AllCompanies(ctx context.Context, cursor *string, limit uint
 }
 
 func TestCompanyHandler(t *testing.T) {
+	t.Parallel()
 	f, err := filepath.Abs(filepath.Join("..", "testdata", "response.json"))
 	if err != nil {
 		t.Errorf("Could understand path %s", f)
@@ -119,6 +120,7 @@ func TestCompanyHandler(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(fmt.Sprintf("%s %s", c.method, c.path), func(t *testing.T) {
+			t.Parallel()
 			req, err := http.NewRequest(c.method, c.path, nil)
 			if err != nil {
 				t.Fatal("Expected an HTTP request, but got an error.")

@@ -412,7 +412,7 @@ func (m *MongoDB) CreateGraphTable() error {
 			{Key: "partner_id", Value: bson.D{{Key: "$cond", Value: bson.D{
 				{Key: "if", Value: bson.D{{Key: "$eq", Value: bson.A{"$json.qsa.identificador_de_socio", 1}}}},
 				{Key: "then", Value: "$json.qsa.cnpj_cpf_do_socio"},
-				{Key: "else", Value: bson.D{{Key: "$md5", Value: bson.D{{Key: "$concat", Value: bson.A{"$json.qsa.cnpj_cpf_do_socio", "$json.qsa.nome_socio"}}}}}},
+				{Key: "else", Value: bson.D{{Key: "$concat", Value: bson.A{"$json.qsa.cnpj_cpf_do_socio", "$json.qsa.nome_socio"}}}},
 			}}}},
 			{Key: "company_name", Value: "$json.razao_social"},
 			{Key: "partner_name", Value: "$json.qsa.nome_socio"},
@@ -441,12 +441,18 @@ func (m *MongoDB) CreateGraphTable() error {
 	return nil
 }
 
-// GetCompanyPartners returns the partners of a company.
-func (m *MongoDB) GetCompanyPartners(ctx context.Context, id string) (string, error) {
+// GetRelated returns the adjacent nodes of a node in the graph.
+func (m *MongoDB) GetRelated(ctx context.Context, id string) ([]GraphEdge, error) {
 	coll := m.db.Collection(graphTableName)
-	cur, err := coll.Find(ctx, bson.M{"company_id": id})
+	filter := bson.M{
+		"$or": []bson.M{
+			{"company_id": id},
+			{"partner_id": id},
+		},
+	}
+	cur, err := coll.Find(ctx, filter)
 	if err != nil {
-		return "", fmt.Errorf("error looking for company partners %s: %w", id, err)
+		return nil, fmt.Errorf("error looking for neighbors of %s: %w", id, err)
 	}
 	defer func() {
 		if err := cur.Close(ctx); err != nil {
@@ -454,72 +460,16 @@ func (m *MongoDB) GetCompanyPartners(ctx context.Context, id string) (string, er
 		}
 	}()
 
-	var rs []companyPartnerRecord
-	if err := cur.All(ctx, &rs); err != nil {
-		return "", fmt.Errorf("error reading company partners %s: %w", id, err)
-	}
-	if len(rs) == 0 {
-		return "", fmt.Errorf("company %s not found in graph", id)
-	}
-
-	resp := companyPartnersResponse{
-		CompanyID: id,
-		Name:      rs[0].CompanyName,
-	}
-	for _, r := range rs {
-		p := graphPartner{PartnerID: r.PartnerID}
-		if r.PartnerType != 1 {
-			p.Name = r.PartnerName
-			p.CPF = r.PartnerCNPF
+	var edges []GraphEdge
+	for cur.Next(ctx) {
+		var e GraphEdge
+		if err := cur.Decode(&e); err != nil {
+			return nil, fmt.Errorf("error decoding neighbor record: %w", err)
 		}
-		resp.Partners = append(resp.Partners, p)
+		edges = append(edges, e)
 	}
-
-	b, err := json.Marshal(resp)
-	if err != nil {
-		return "", fmt.Errorf("error marshalling company partners %s: %w", id, err)
+	if err := cur.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating through neighbors: %w", err)
 	}
-	return string(b), nil
-}
-
-// GetPartnerCompanies returns the companies associated with a partner.
-func (m *MongoDB) GetPartnerCompanies(ctx context.Context, id string) (string, error) {
-	coll := m.db.Collection(graphTableName)
-	cur, err := coll.Find(ctx, bson.M{"partner_id": id})
-	if err != nil {
-		return "", fmt.Errorf("error looking for partner companies %s: %w", id, err)
-	}
-	defer func() {
-		if err := cur.Close(ctx); err != nil {
-			slog.Warn("could not close database cursor", "error", err)
-		}
-	}()
-
-	var rs []partnerCompanyRecord
-	if err := cur.All(ctx, &rs); err != nil {
-		return "", fmt.Errorf("error reading partner companies %s: %w", id, err)
-	}
-	if len(rs) == 0 {
-		return "", fmt.Errorf("partner %s not found in graph", id)
-	}
-
-	resp := partnerCompaniesResponse{
-		PartnerID: id,
-	}
-	if rs[0].PartnerType != 1 {
-		resp.Name = rs[0].PartnerName
-		resp.CPF = rs[0].PartnerCNPF
-	}
-	for _, r := range rs {
-		resp.Companies = append(resp.Companies, graphCompany{
-			CNPJ: r.CompanyID,
-			Name: r.CompanyName,
-		})
-	}
-
-	b, err := json.Marshal(resp)
-	if err != nil {
-		return "", fmt.Errorf("error marshalling partner companies %s: %w", id, err)
-	}
-	return string(b), nil
+	return edges, nil
 }

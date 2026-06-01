@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"codeberg.org/cuducos/minha-receita/db"
 )
 
 type mockGraphDatabase struct{}
@@ -24,7 +26,28 @@ func (mockGraphDatabase) GetPartnerCompanies(_ context.Context, id string) (stri
 	return "", fmt.Errorf("not found")
 }
 
+func (mockGraphDatabase) GetRelated(_ context.Context, id string) ([]db.GraphEdge, error) {
+	ok := "19131243000197"
+	pf := "7f34c2ed2c1e8587d5598686e0c65360"
+	pj := "33683111000280"
+
+	e1 := db.GraphEdge{CompanyID: ok, CompanyName: "OPEN KNOWLEDGE BRASIL", PartnerID: pf, PartnerName: "HAYDEE SVAB", PartnerCPF: "***112108**", PartnerType: 2}
+	e2 := db.GraphEdge{CompanyID: pj, CompanyName: "PETRÓLEO BRASILEIRO S.A. - PETROBRAS", PartnerID: pf, PartnerName: "HAYDEE SVAB", PartnerCPF: "***112108**", PartnerType: 2}
+
+	if id == ok {
+		return []db.GraphEdge{e1}, nil
+	}
+	if id == pj {
+		return []db.GraphEdge{e2}, nil
+	}
+	if id == pf {
+		return []db.GraphEdge{e1, e2}, nil
+	}
+	return nil, nil
+}
+
 func TestGraphHandler(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		path    string
 		method  string
@@ -38,49 +61,50 @@ func TestGraphHandler(t *testing.T) {
 			"",
 		},
 		{
-			"/qsa/19131243000197",
+			"/relacoes/19131243000197",
 			http.MethodGet,
 			http.StatusOK,
-			`{"company_id":"19131243000197","name":"OPEN KNOWLEDGE BRASIL","partners":[{"partner_id":"7f34c2ed2c1e8587d5598686e0c65360","name":"HAYDEE SVAB","cpf":"***112108**"}]}`,
+			`[{"cnpj":"19131243000197","razao_social":"OPEN KNOWLEDGE BRASIL","id":"7f34c2ed2c1e8587d5598686e0c65360","nome":"HAYDEE SVAB","cpf":"***112108**"}]`,
 		},
 		{
-			"/qsa/19.131.243/0001-97",
+			"/relacoes/19.131.243/0001-97",
 			http.MethodGet,
 			http.StatusOK,
-			`{"company_id":"19131243000197","name":"OPEN KNOWLEDGE BRASIL","partners":[{"partner_id":"7f34c2ed2c1e8587d5598686e0c65360","name":"HAYDEE SVAB","cpf":"***112108**"}]}`,
+			`[{"cnpj":"19131243000197","razao_social":"OPEN KNOWLEDGE BRASIL","id":"7f34c2ed2c1e8587d5598686e0c65360","nome":"HAYDEE SVAB","cpf":"***112108**"}]`,
 		},
 		{
-			"/cnpjs/7f34c2ed2c1e8587d5598686e0c65360",
+			"/relacoes/7f34c2ed2c1e8587d5598686e0c65360",
 			http.MethodGet,
 			http.StatusOK,
-			`{"partner_id":"7f34c2ed2c1e8587d5598686e0c65360","name":"HAYDEE SVAB","cpf":"***112108**","companies":[{"cnpj":"19131243000197","name":"OPEN KNOWLEDGE BRASIL"}]}`,
+			`[{"cnpj":"19131243000197","razao_social":"OPEN KNOWLEDGE BRASIL","id":"7f34c2ed2c1e8587d5598686e0c65360","nome":"HAYDEE SVAB","cpf":"***112108**"},{"cnpj":"33683111000280","razao_social":"PETRÓLEO BRASILEIRO S.A. - PETROBRAS","id":"7f34c2ed2c1e8587d5598686e0c65360","nome":"HAYDEE SVAB","cpf":"***112108**"}]`,
 		},
 		{
-			"/cnpjs/999",
+			"/relacoes/999",
 			http.MethodGet,
 			http.StatusNotFound,
-			`{"message":"Identificador 999 não encontrado."}`,
+			`{"message":"Identificador 999 não encontrado ou sem conexões."}`,
 		},
 		{
-			"/qsa/00000000000000",
+			"/conexao/19131243000197/33683111000280",
+			http.MethodGet,
+			http.StatusOK,
+			`[{"cnpj":"19131243000197","razao_social":"OPEN KNOWLEDGE BRASIL","id":"7f34c2ed2c1e8587d5598686e0c65360","nome":"HAYDEE SVAB","cpf":"***112108**"},{"cnpj":"33683111000280","razao_social":"PETRÓLEO BRASILEIRO S.A. - PETROBRAS","id":"7f34c2ed2c1e8587d5598686e0c65360","nome":"HAYDEE SVAB","cpf":"***112108**"}]`,
+		},
+
+		{
+			"/conexao/19131243000197/00000000000000",
 			http.MethodGet,
 			http.StatusNotFound,
-			`{"message":"CNPJ 00.000.000/0000-00 não encontrado."}`,
-		},
-		{
-			"/qsa/invalid-id",
-			http.MethodGet,
-			http.StatusBadRequest,
-			`{"message":"CNPJ invalid-id inválido."}`,
+			`{"message":"Nenhuma conexão encontrada entre 19131243000197 e 00000000000000."}`,
 		},
 		{
 			"/other",
 			http.MethodGet,
 			http.StatusNotFound,
-			`{"message":"Endpoint /other não encontrado. Use /qsa/<CNPJ> ou /cnpjs/<ID>."}`,
+			`{"message":"Endpoint /other não encontrado. Use /relacoes/<ID> ou /conexao/<ID>/<ID>."}`,
 		},
 		{
-			"/qsa/19131243000197",
+			"/relacoes/19131243000197",
 			http.MethodOptions,
 			http.StatusOK,
 			``,
@@ -88,14 +112,17 @@ func TestGraphHandler(t *testing.T) {
 	}
 
 	app := graphAPI{db: &mockGraphDatabase{}}
+	mux := app.mux()
+
 	for _, c := range cases {
 		t.Run(c.path, func(t *testing.T) {
+			t.Parallel()
 			req, err := http.NewRequest(c.method, c.path, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			resp := httptest.NewRecorder()
-			app.handler(resp, req)
+			mux.ServeHTTP(resp, req)
 
 			if resp.Code != c.status {
 				t.Errorf("expected status %d, got %d", c.status, resp.Code)

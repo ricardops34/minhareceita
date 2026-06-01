@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"embed"
-	"encoding/json/v2"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -83,8 +82,7 @@ type PostgreSQL struct {
 	uri                      string
 	schema                   string
 	getCompanyQuery          string
-	getCompanyPartnersQuery  string
-	getPartnerCompaniesQuery string
+	getNeighborsQuery        string
 	metaReadQuery            string
 	CompanyTableName         string
 	GraphTableName           string
@@ -432,13 +430,9 @@ func NewPostgreSQL(uri, schema string) (PostgreSQL, error) {
 	if err != nil {
 		return PostgreSQL{}, fmt.Errorf("error rendering get template: %w", err)
 	}
-	p.getCompanyPartnersQuery, err = p.renderTemplate("get_company_partners")
+	p.getNeighborsQuery, err = p.renderTemplate("get_neighbors")
 	if err != nil {
-		return PostgreSQL{}, fmt.Errorf("error rendering get_company_partners template: %w", err)
-	}
-	p.getPartnerCompaniesQuery, err = p.renderTemplate("get_partner_companies")
-	if err != nil {
-		return PostgreSQL{}, fmt.Errorf("error rendering get_partner_companies template: %w", err)
+		return PostgreSQL{}, fmt.Errorf("error rendering get_neighbors template: %w", err)
 	}
 	p.metaReadQuery, err = p.renderTemplate("meta_read")
 	if err != nil {
@@ -466,67 +460,15 @@ func (p *PostgreSQL) CreateGraphTable() error {
 	return nil
 }
 
-// GetCompanyPartners returns the partners of a company.
-func (p *PostgreSQL) GetCompanyPartners(ctx context.Context, id string) (string, error) {
-	rows, err := p.pool.Query(ctx, p.getCompanyPartnersQuery, id)
+// GetRelated returns the adjacent nodes of a node in the graph.
+func (p *PostgreSQL) GetRelated(ctx context.Context, id string) ([]GraphEdge, error) {
+	rows, err := p.pool.Query(ctx, p.getNeighborsQuery, id)
 	if err != nil {
-		return "", fmt.Errorf("error looking for company partners %s: %w", id, err)
+		return nil, fmt.Errorf("error looking for neighbors of %s: %w", id, err)
 	}
-	rs, err := pgx.CollectRows(rows, pgx.RowToStructByPos[companyPartnerRecord])
+	rs, err := pgx.CollectRows(rows, pgx.RowToStructByPos[GraphEdge])
 	if err != nil {
-		return "", fmt.Errorf("error reading company partners %s: %w", id, err)
+		return nil, fmt.Errorf("error reading neighbors of %s: %w", id, err)
 	}
-	if len(rs) == 0 {
-		return "", fmt.Errorf("company %s not found in graph", id)
-	}
-	resp := companyPartnersResponse{
-		CompanyID: id,
-		Name:      rs[0].CompanyName,
-	}
-	for _, r := range rs {
-		p := graphPartner{PartnerID: r.PartnerID}
-		if r.PartnerType != 1 {
-			p.Name = r.PartnerName
-			p.CPF = r.PartnerCNPF
-		}
-		resp.Partners = append(resp.Partners, p)
-	}
-	b, err := json.Marshal(resp)
-	if err != nil {
-		return "", fmt.Errorf("error marshalling company partners %s: %w", id, err)
-	}
-	return string(b), nil
-}
-
-// GetPartnerCompanies returns the companies associated with a partner.
-func (p *PostgreSQL) GetPartnerCompanies(ctx context.Context, id string) (string, error) {
-	rows, err := p.pool.Query(ctx, p.getPartnerCompaniesQuery, id)
-	if err != nil {
-		return "", fmt.Errorf("error looking for partner companies %s: %w", id, err)
-	}
-	rs, err := pgx.CollectRows(rows, pgx.RowToStructByPos[partnerCompanyRecord])
-	if err != nil {
-		return "", fmt.Errorf("error reading partner companies %s: %w", id, err)
-	}
-	if len(rs) == 0 {
-		return "", fmt.Errorf("partner %s not found in graph", id)
-	}
-	resp := partnerCompaniesResponse{
-		PartnerID: id,
-	}
-	if rs[0].PartnerType != 1 {
-		resp.Name = rs[0].PartnerName
-		resp.CPF = rs[0].PartnerCNPF
-	}
-	for _, r := range rs {
-		resp.Companies = append(resp.Companies, graphCompany{
-			CNPJ: r.CompanyID,
-			Name: r.CompanyName,
-		})
-	}
-	b, err := json.Marshal(resp)
-	if err != nil {
-		return "", fmt.Errorf("error marshalling partner companies %s: %w", id, err)
-	}
-	return string(b), nil
+	return rs, nil
 }

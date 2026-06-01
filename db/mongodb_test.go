@@ -150,3 +150,57 @@ func TestMongoAllCompanies(t *testing.T) {
 		t.Error("expected error for invalid cursor")
 	}
 }
+
+func TestMongoGetNeighbors(t *testing.T) {
+	id := "33683111000280"
+	b, err := os.ReadFile(filepath.Join("..", "testdata", "response.json"))
+	if err != nil {
+		t.Error("error reading company JSON file")
+	}
+	c := string(b)
+	m, err := setUpMongo(id, c)
+	if err != nil {
+		t.Errorf("expected no error setting up mongo, got %s", err)
+		return
+	}
+	defer func() {
+		if err := m.Drop(); err != nil {
+			t.Errorf("expected no error dropping the collections, got %s", err)
+		}
+		m.Close()
+	}()
+
+	if err := m.CreateGraphTable(); err != nil {
+		t.Errorf("expected no error creating graph table, got %s", err)
+	}
+
+	var ns []GraphEdge
+	t.Run("from company perspective", func(t *testing.T) {
+		var err error
+		ns, err = m.GetRelated(context.Background(), id)
+		if err != nil {
+			t.Errorf("expected no error getting relations, got %s", err)
+		}
+		if len(ns) == 0 {
+			t.Error("expected at least one relation for the company")
+		}
+	})
+
+	t.Run("from partner perspective", func(t *testing.T) {
+		p := ns[0].PartnerID
+		ns2, err := m.GetRelated(context.Background(), p)
+		if err != nil {
+			t.Errorf("expected no error getting relations for partner, got %s", err)
+		}
+		ok := false
+		for _, n := range ns2 {
+			if n.CompanyID == id {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			t.Errorf("expected to find company %s as a relation of partner %s", id, p)
+		}
+	})
+}

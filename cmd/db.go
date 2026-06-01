@@ -36,8 +36,7 @@ type database interface {
 
 	// graph
 	CreateGraphTable() error
-	GetCompanyPartners(context.Context, string) (string, error)
-	GetPartnerCompanies(context.Context, string) (string, error)
+	GetRelated(context.Context, string) ([]db.GraphEdge, error)
 }
 
 func loadDatabase() (database, error) {
