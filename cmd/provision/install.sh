@@ -13,6 +13,17 @@ if [ "$ID" != "ubuntu" ] && [ "$ID" != "debian" ]; then
 	exit 1
 fi
 
+echo "==> Ensuring sudo is available..."
+if ! command -v sudo >/dev/null 2>&1; then
+	if [ "$EUID" -eq 0 ]; then
+		apt-get update -qq
+		apt-get install -y -qq sudo
+	else
+		echo "sudo is not installed and you are not root. Install sudo first or run as root."
+		exit 1
+	fi
+fi
+
 echo "==> Installing prerequisites..."
 for i in 1 2 3; do
 	if sudo apt-get -o DPkg::Lock::Timeout=120 update -qq; then
