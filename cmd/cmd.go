@@ -18,7 +18,10 @@ See --help for more details.
 `
 )
 
-var dir string
+var (
+	dir  string
+	args DatabaseArgs
+)
 
 var rootCmd = &cobra.Command{
 	Use:   "minha-receita <command>",
@@ -30,7 +33,7 @@ var createCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Creates the required tables in the database",
 	RunE: func(_ *cobra.Command, _ []string) error {
-		db, err := loadDatabase()
+		db, err := loadDatabase(&args)
 		if err != nil {
 			return fmt.Errorf("could not find database: %w", err)
 		}
@@ -43,7 +46,7 @@ var dropCmd = &cobra.Command{
 	Use:   "drop",
 	Short: "Drops the tables in PostgreSQL",
 	RunE: func(_ *cobra.Command, _ []string) error {
-		db, err := loadDatabase()
+		db, err := loadDatabase(&args)
 		if err != nil {
 			return fmt.Errorf("could not find database: %w", err)
 		}
@@ -57,9 +60,9 @@ func addDataDir(c *cobra.Command) *cobra.Command {
 	return c
 }
 
-func addDatabase(c *cobra.Command) *cobra.Command {
-	c.Flags().StringVarP(&databaseURI, "database-uri", "u", "", "Database URI (default DATABASE_URL environment variable)")
-	c.Flags().StringVarP(&postgresSchema, "postgres-schema", "s", "public", "PostgreSQL schema")
+func addDatabase(c *cobra.Command, args *DatabaseArgs) *cobra.Command {
+	c.Flags().StringVarP(&args.URI, "database-uri", "u", "", "Database URI (default DATABASE_URL environment variable)")
+	c.Flags().StringVarP(&args.PostgresSchema, "postgres-schema", "s", "public", "PostgreSQL schema")
 	return c
 }
 
@@ -68,7 +71,7 @@ var createExtraIndexesCmd = &cobra.Command{
 	Short: "Creates extra indexes in the company fields",
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(_ *cobra.Command, idxs []string) error {
-		db, err := loadDatabase()
+		db, err := loadDatabase(&args)
 		if err != nil {
 			return fmt.Errorf("could not find database: %w", err)
 		}
@@ -80,7 +83,7 @@ var createExtraIndexesCmd = &cobra.Command{
 // CLI returns the root command from Cobra CLI tool.
 func CLI() *cobra.Command {
 	for _, c := range []*cobra.Command{createCmd, dropCmd, transformCmd} {
-		addDatabase(c)
+		addDatabase(c, &args)
 	}
 	rootCmd.AddCommand(
 		apiCLI(),

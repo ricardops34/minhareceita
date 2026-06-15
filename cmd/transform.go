@@ -32,7 +32,7 @@ var transformCmd = &cobra.Command{
 	Short: "Transforms the CSV files into database records",
 	Long:  transformHelper,
 	RunE: func(_ *cobra.Command, _ []string) error {
-		db, err := loadDatabase()
+		db, err := loadDatabase(&args)
 		if err != nil {
 			return fmt.Errorf("could not find database: %w", err)
 		}
@@ -75,5 +75,6 @@ func transformCLI() *cobra.Command {
 	transformCmd.Flags().BoolVarP(&cleanUp, "clean-up", "c", cleanUp, "drop & recreate the database table before starting")
 	transformCmd.Flags().IntVarP(&batchSize, "batch-size", "b", batchSize, "size of the batch to save to the database")
 	transformCmd.Flags().BoolVarP(&noPrivacy, "no-privacy", "p", noPrivacy, "include email addresses, CPF and other PII in the JSON data")
+	transformCmd.Flags().BoolVarP(&args.PostgresLogged, "logged", "l", args.PostgresLogged, "avoids the disk overhead but writes slowly to the table (PostgreSQL only)")
 	return transformCmd
 }

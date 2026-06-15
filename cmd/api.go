@@ -61,7 +61,7 @@ var apiCmd = &cobra.Command{
 				bloomSize = n
 			}
 		}
-		db, err := loadDatabase()
+		db, err := loadDatabase(&args)
 		if err != nil {
 			return fmt.Errorf("could not find database: %w", err)
 		}

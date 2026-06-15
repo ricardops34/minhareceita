@@ -1,1 +1,1 @@
-ALTER TABLE {{ .CompanyTableFullName }} SET UNLOGGED;
+{{ if not .Logged }}ALTER TABLE {{ .CompanyTableFullName }} SET UNLOGGED;{{ end }}

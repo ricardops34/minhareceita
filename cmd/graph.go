@@ -20,7 +20,7 @@ var graphCmd = &cobra.Command{
 		if port == "" {
 			port = defaultPort
 		}
-		db, err := loadDatabase()
+		db, err := loadDatabase(&args)
 		if err != nil {
 			return fmt.Errorf("could not find database: %w", err)
 		}
@@ -45,6 +45,6 @@ func graphCLI() *cobra.Command {
 		fmt.Sprintf("web server port (default PORT environment variable or %s)", defaultPort),
 	)
 	graphCmd.Flags().BoolVar(&skipCreate, "skip-create", false, "skip creating the graph table/collection")
-	addDatabase(graphCmd)
+	addDatabase(graphCmd, &args)
 	return graphCmd
 }

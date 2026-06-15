@@ -19,7 +19,7 @@ func setUpPostgres(id, c string) (*PostgreSQL, error) {
 	if u == "" {
 		return nil, fmt.Errorf("expected a posgres uri at TEST_POSTGRES_URL, found nothing")
 	}
-	db, err := NewPostgreSQL(u, "public")
+	db, err := NewPostgreSQL(u, "public", false)
 	if err != nil {
 		return nil, fmt.Errorf("expected no error connecting to postgres, got %w", err)
 	}

@@ -93,6 +93,7 @@ type PostgreSQL struct {
 	KeyFieldName      string
 	ValueFieldName    string
 	ExtraIndexes      []ExtraIndex
+	Logged            bool
 }
 
 func (p *PostgreSQL) renderTemplate(key string) (string, error) {
@@ -400,7 +401,7 @@ func (p *PostgreSQL) AllCompanies(ctx context.Context, cursor *string, limit uin
 }
 
 // NewPostgreSQL creates a new PostgreSQL connection and ping it to make sure it works.
-func NewPostgreSQL(uri, schema string) (PostgreSQL, error) {
+func NewPostgreSQL(uri, schema string, logged bool) (PostgreSQL, error) {
 	cfg, err := pgxpool.ParseConfig(uri)
 	if err != nil {
 		return PostgreSQL{}, fmt.Errorf("could not create database config: %w", err)
@@ -425,6 +426,7 @@ func NewPostgreSQL(uri, schema string) (PostgreSQL, error) {
 		JSONFieldName:    jsonFieldName,
 		KeyFieldName:     keyFieldName,
 		ValueFieldName:   valueFieldName,
+		Logged:           logged,
 	}
 	p.getCompanyQuery, err = p.renderTemplate("get")
 	if err != nil {
