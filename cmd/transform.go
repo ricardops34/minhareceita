@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
+	"codeberg.org/cuducos/minha-receita/db"
 	"codeberg.org/cuducos/minha-receita/transform"
 	"github.com/spf13/cobra"
 )
@@ -21,10 +21,9 @@ The transformation process is divided into three steps:
 `
 
 var (
-	maxParallelDBQueries int
-	batchSize            int
-	cleanUp              bool
-	noPrivacy            bool
+	batchSize int
+	cleanUp   bool
+	noPrivacy bool
 )
 
 var transformCmd = &cobra.Command{
@@ -32,6 +31,7 @@ var transformCmd = &cobra.Command{
 	Short: "Transforms the CSV files into database records",
 	Long:  transformHelper,
 	RunE: func(_ *cobra.Command, _ []string) error {
+		args.SetURI(uri)
 		db, err := loadDatabase(&args)
 		if err != nil {
 			return fmt.Errorf("could not find database: %w", err)
@@ -45,7 +45,7 @@ var transformCmd = &cobra.Command{
 				return err
 			}
 		}
-		return transform.Transform(dir, db, batchSize, maxParallelDBQueries, !noPrivacy)
+		return transform.Transform(dir, db, batchSize, !noPrivacy)
 	},
 }
 
@@ -59,17 +59,16 @@ var cleanupTempCmd = &cobra.Command{
 
 func transformCLI() *cobra.Command {
 	transformCmd.Flags().IntVarP(
-		&maxParallelDBQueries,
-		"max-parallel-db-queries",
+		&args.MaxConns,
+		"max-db-connections",
 		"m",
-		transform.MaxParallelDBQueries,
-		"maximum parallel database queries",
+		args.MaxConns,
+		"maximum parallel database connections",
 	)
 
-	u := os.Getenv("DATABASE_URL")
-	batchSize = min(transform.MongoDBBatchSize, transform.PostgresBatchSize) // start with the lower one
-	if strings.HasPrefix(u, "postgres://") || strings.HasPrefix(u, "postgresql://") {
-		batchSize = transform.PostgresBatchSize
+	batchSize = min(db.MongoDBBatchSize, db.SQLBatchSize)
+	if !strings.HasPrefix(args.URI, "mongodb://") {
+		batchSize = db.SQLBatchSize
 	}
 
 	transformCmd.Flags().BoolVarP(&cleanUp, "clean-up", "c", cleanUp, "drop & recreate the database table before starting")

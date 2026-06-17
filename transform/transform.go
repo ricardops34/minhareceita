@@ -15,20 +15,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const (
-	// PostgresBatchSize determines the size of the batches used to create the initial JSON in Postgres
-	// data in the database.
-	PostgresBatchSize = 65536
-
-	// MongoDBBatchSize determines the size of the batches used to create the initial JSON in MongoDB
-	// data in the database.
-	MongoDBBatchSize = 16384
-
-	// MaxParallelDBQueries is the default for maximum number of parallels save
-	// queries sent to the database
-	MaxParallelDBQueries = 16
-)
-
 var validIndexName = regexp.MustCompile(`^[a-z_.]+$`)
 
 // ValidateIndexes checks that the given index names are valid JSON field paths
@@ -149,15 +135,15 @@ func postLoad(db database) error {
 	return nil
 }
 
-func Transform(dir string, db database, batch, maxDB int, privacy bool) error {
+func Transform(dir string, db database, batch int, privacy bool) error {
 	ibgeMunicipalitiesURL, err := ibgeMunicipalitiesURL()
 	if err != nil {
 		return fmt.Errorf("could not discover ibge municipalities URL: %w", err)
 	}
-	return transform(dir, db, batch, maxDB, privacy, ibgeMunicipalitiesURL)
+	return transform(dir, db, batch, privacy, ibgeMunicipalitiesURL)
 }
 
-func transform(dir string, db database, batch, maxDB int, privacy bool, ibgeMunicipalitiesURL string) error {
+func transform(dir string, db database, batch int, privacy bool, ibgeMunicipalitiesURL string) error {
 	if err := db.PreLoad(); err != nil {
 		return err
 	}
@@ -226,7 +212,13 @@ func transform(dir string, db database, batch, maxDB int, privacy bool, ibgeMuni
 	if err := kv.flush(); err != nil {
 		return fmt.Errorf("could not flush key-value storage: %w", err)
 	}
-	if err := writeJSONs(ctx, srcs, kv, db, maxDB, batch, ext, privacy); err != nil {
+	src := newCompanySrc("Estabelecimentos", ';', false, false)
+	w, err := newWriter(db, kv, srcs, batch, privacy, ext, src)
+	if err != nil {
+		return err
+	}
+	defer w.Close()
+	if err := w.write(ctx); err != nil {
 		return err
 	}
 	if err := postLoad(db); err != nil {

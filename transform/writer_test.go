@@ -59,7 +59,13 @@ func TestWriteJSONs(t *testing.T) {
 	if err := db.PreLoad(); err != nil {
 		t.Fatalf("expected no error calling PreLoad, got %s", err)
 	}
-	err = writeJSONs(ctx, srcs, kv, db, 16, 8192, ext, false)
+	src := newCompanySrc("Estabelecimentos", ';', false, false)
+	w, err := newWriter(db, kv, srcs, 8192, false, ext, src)
+	if err != nil {
+		t.Fatalf("expected no error creating writer, got %s", err)
+	}
+	defer w.Close()
+	err = w.write(ctx)
 	if err != nil {
 		t.Fatalf("expected no error processing test data, got %s", err)
 	}

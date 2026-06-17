@@ -25,8 +25,8 @@ type MongoDB struct {
 }
 
 // NewMongoDB initializes a new MongoDB connection wrapped in a structure.
-func NewMongoDB(uri string) (MongoDB, error) {
-	opts := options.Client().ApplyURI(uri)
+func NewMongoDB(a *Args) (MongoDB, error) {
+	opts := options.Client().ApplyURI(a.URI)
 	c, err := mongo.Connect(opts)
 	if err != nil {
 		return MongoDB{}, fmt.Errorf("failed to connect to MongoDB: %w", err)
@@ -36,7 +36,7 @@ func NewMongoDB(uri string) (MongoDB, error) {
 	if err := c.Ping(ctx, nil); err != nil {
 		return MongoDB{}, fmt.Errorf("failed to ping to MongoDB: %w", err)
 	}
-	u := strings.Split(uri, "?")[0] // Remove query parameters from the URI
+	u := strings.Split(a.URI, "?")[0] // Remove query parameters from the URI
 	ps := strings.Split(u, "/")
 	n := ps[len(ps)-1]
 	if n == "" || strings.Contains(n, "@") { // ensure the database name is valid

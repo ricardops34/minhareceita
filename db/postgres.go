@@ -28,7 +28,7 @@ const (
 )
 
 //go:embed postgres
-var sql embed.FS
+var pgsql embed.FS
 
 type sqlTemplate struct {
 	path         fs.DirEntry
@@ -37,7 +37,7 @@ type sqlTemplate struct {
 }
 
 func (s *sqlTemplate) render(p *PostgreSQL) (string, error) {
-	t, err := template.ParseFS(sql, s.embeddedPath)
+	t, err := template.ParseFS(pgsql, s.embeddedPath)
 	if err != nil {
 		return "", fmt.Errorf("error parsing %s template: %w", s.path, err)
 	}
@@ -97,7 +97,7 @@ type PostgreSQL struct {
 }
 
 func (p *PostgreSQL) renderTemplate(key string) (string, error) {
-	ls, err := sql.ReadDir("postgres")
+	ls, err := pgsql.ReadDir("postgres")
 	if err != nil {
 		return "", fmt.Errorf("error looking for templates: %w", err)
 	}
@@ -401,12 +401,12 @@ func (p *PostgreSQL) AllCompanies(ctx context.Context, cursor *string, limit uin
 }
 
 // NewPostgreSQL creates a new PostgreSQL connection and ping it to make sure it works.
-func NewPostgreSQL(uri, schema string, logged bool) (PostgreSQL, error) {
-	cfg, err := pgxpool.ParseConfig(uri)
+func NewPostgreSQL(a *Args) (PostgreSQL, error) {
+	cfg, err := pgxpool.ParseConfig(a.URI)
 	if err != nil {
 		return PostgreSQL{}, fmt.Errorf("could not create database config: %w", err)
 	}
-	cfg.MaxConns = 16
+	cfg.MaxConns = int32(a.MaxConns)
 	cfg.MinConns = 1
 	cfg.MaxConnIdleTime = 5 * time.Minute
 	cfg.MaxConnLifetime = 30 * time.Minute
@@ -416,8 +416,8 @@ func NewPostgreSQL(uri, schema string, logged bool) (PostgreSQL, error) {
 	}
 	p := PostgreSQL{
 		pool:             conn,
-		uri:              uri,
-		schema:           schema,
+		uri:              a.URI,
+		schema:           a.PostgresSchema,
 		CompanyTableName: companyTableName,
 		GraphTableName:   graphTableName,
 		MetaTableName:    metaTableName,
@@ -426,7 +426,7 @@ func NewPostgreSQL(uri, schema string, logged bool) (PostgreSQL, error) {
 		JSONFieldName:    jsonFieldName,
 		KeyFieldName:     keyFieldName,
 		ValueFieldName:   valueFieldName,
-		Logged:           logged,
+		Logged:           a.PostgresLogged,
 	}
 	p.getCompanyQuery, err = p.renderTemplate("get")
 	if err != nil {

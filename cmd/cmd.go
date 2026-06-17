@@ -4,6 +4,7 @@ package cmd
 import (
 	"fmt"
 
+	"codeberg.org/cuducos/minha-receita/db"
 	"github.com/spf13/cobra"
 )
 
@@ -20,7 +21,8 @@ See --help for more details.
 
 var (
 	dir  string
-	args DatabaseArgs
+	uri  string
+	args = db.NewArgs()
 )
 
 var rootCmd = &cobra.Command{
@@ -33,6 +35,7 @@ var createCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Creates the required tables in the database",
 	RunE: func(_ *cobra.Command, _ []string) error {
+		args.SetURI(uri)
 		db, err := loadDatabase(&args)
 		if err != nil {
 			return fmt.Errorf("could not find database: %w", err)
@@ -46,6 +49,7 @@ var dropCmd = &cobra.Command{
 	Use:   "drop",
 	Short: "Drops the tables in PostgreSQL",
 	RunE: func(_ *cobra.Command, _ []string) error {
+		args.SetURI(uri)
 		db, err := loadDatabase(&args)
 		if err != nil {
 			return fmt.Errorf("could not find database: %w", err)
@@ -60,8 +64,8 @@ func addDataDir(c *cobra.Command) *cobra.Command {
 	return c
 }
 
-func addDatabase(c *cobra.Command, args *DatabaseArgs) *cobra.Command {
-	c.Flags().StringVarP(&args.URI, "database-uri", "u", "", "Database URI (default DATABASE_URL environment variable)")
+func addDatabase(c *cobra.Command, args *db.Args) *cobra.Command {
+	c.Flags().StringVarP(&uri, "database-uri", "u", "", "Database URI (default DATABASE_URL environment variable)")
 	c.Flags().StringVarP(&args.PostgresSchema, "postgres-schema", "s", "public", "PostgreSQL schema")
 	return c
 }
@@ -71,6 +75,7 @@ var createExtraIndexesCmd = &cobra.Command{
 	Short: "Creates extra indexes in the company fields",
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(_ *cobra.Command, idxs []string) error {
+		args.SetURI(uri)
 		db, err := loadDatabase(&args)
 		if err != nil {
 			return fmt.Errorf("could not find database: %w", err)

@@ -20,7 +20,7 @@ func setUpMongo(id, c string) (*MongoDB, error) {
 	if u == "" {
 		return nil, fmt.Errorf("expected a mongodb uri at TEST_MONGODB_URL, found nothing")
 	}
-	db, err := NewMongoDB(u)
+	db, err := NewMongoDB(&Args{URI: u})
 	if err != nil {
 		return nil, fmt.Errorf("expected no error connecting to mongodb, got %s", err)
 	}

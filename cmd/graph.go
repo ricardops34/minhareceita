@@ -14,6 +14,7 @@ var graphCmd = &cobra.Command{
 	Use:   "graph",
 	Short: "Creates the graph table and spins up the graph web API",
 	RunE: func(_ *cobra.Command, _ []string) error {
+		args.SetURI(uri)
 		if port == "" {
 			port = os.Getenv("PORT")
 		}

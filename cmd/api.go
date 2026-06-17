@@ -36,6 +36,7 @@ var apiCmd = &cobra.Command{
 	Short: "Spins up the web API",
 	Long:  apiHelper,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		args.SetURI(uri)
 		var err error
 		if port == "" {
 			port = os.Getenv("PORT")
