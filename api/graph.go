@@ -77,8 +77,7 @@ func (app *graphAPI) findShortestPath(ctx context.Context, src, dst string) ([]d
 				if _, ok := v[id]; ok {
 					continue
 				}
-				e := edge
-				n := &pathNode{id: id, parent: p, edge: &e}
+				n := &pathNode{id: id, parent: p, edge: &edge}
 				v[id] = n
 				if m, ok := other[id]; ok {
 					if isSrc {
