@@ -102,7 +102,7 @@ func (w *writer) processCSV(ctx context.Context, f *zip.File) error {
 	cr := countReader{r, 0}
 	csvr := csv.NewReader(charmap.ISO8859_15.NewDecoder().Reader(&cr))
 	csvr.Comma = w.src.sep
-	var b [][]string
+	b := make([][]string, 0, w.batch)
 	var prev int64
 	for {
 		select {
