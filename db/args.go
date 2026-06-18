@@ -6,8 +6,8 @@ const maxConnsDefault = 16
 
 // Args holds the configuration for connecting to and using a database.
 type Args struct {
-	URI            string
-	MaxConns       int
+	URI      string
+	MaxConns int
 
 	PostgresSchema string
 	PostgresLogged bool
