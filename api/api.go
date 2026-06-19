@@ -213,7 +213,7 @@ func (app *api) allowedHostWrapper(h func(http.ResponseWriter, *http.Request)) f
 		return h
 	}
 	w := func(w http.ResponseWriter, r *http.Request) {
-		if v := r.Header.Get("Host"); v != app.host {
+		if v := r.Host; v != app.host {
 			slog.Error("Host not allowed", "host", v)
 			w.WriteHeader(http.StatusTeapot)
 			return
