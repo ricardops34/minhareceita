@@ -40,9 +40,8 @@ func TestSerializeDeserialize(t *testing.T) {
 	}
 }
 
-// TestDeserializeLargeValue trava a regressão do bug do buffer:
-// valores acima de defaultPoolSize (512) não podem causar panic.
 func TestDeserializeLargeValue(t *testing.T) {
+	t.Parallel()
 	kv, err := newBadger(t.TempDir(), false)
 	if err != nil {
 		t.Fatalf("expected no error opening badger, got %s", err)
@@ -57,12 +56,13 @@ func TestDeserializeLargeValue(t *testing.T) {
 		name string
 		size int
 	}{
-		{"below pool size", defaultPoolSize - 1}, // 511
-		{"exact pool size", defaultPoolSize},     // 512
-		{"above pool size", defaultPoolSize + 1}, // 513 — ANTES do fix: panic
-		{"way above", defaultPoolSize * 4},       // 2048
+		{"below pool size", defaultPoolSize - 1},
+		{"exact pool size", defaultPoolSize},
+		{"above pool size", defaultPoolSize + 1},
+		{"way above", defaultPoolSize * 4},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			want := strings.Repeat("a", tc.size)
 			row := []string{want}
 
@@ -71,7 +71,6 @@ func TestDeserializeLargeValue(t *testing.T) {
 				t.Fatalf("expected no error serializing, got %s", err)
 			}
 
-			// antes do fix, valores acima de defaultPoolSize causavam panic aqui.
 			got, err := kv.deserialize(s)
 			if err != nil {
 				t.Fatalf("expected no error deserializing, got %s", err)
