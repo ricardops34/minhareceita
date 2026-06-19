@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,12 +10,13 @@ import (
 	"strings"
 	"testing"
 
+	"codeberg.org/cuducos/minha-receita/company"
 	"codeberg.org/cuducos/minha-receita/testutils"
 )
 
 var postgresDefaultIndexes = []string{"cnpj_pkey", "cnpj_id"}
 
-func setUpPostgres(id, c string) (*PostgreSQL, error) {
+func setUpPostgres(id string, c company.Company) (*PostgreSQL, error) {
 	u := os.Getenv("TEST_POSTGRES_URL")
 	if u == "" {
 		return nil, fmt.Errorf("expected a posgres uri at TEST_POSTGRES_URL, found nothing")
@@ -32,7 +34,8 @@ func setUpPostgres(id, c string) (*PostgreSQL, error) {
 	if err := db.PreLoad(); err != nil {
 		return nil, fmt.Errorf("expected no error pre load on postgres, got %w", err)
 	}
-	if err := db.CreateCompanies(context.Background(), [][]string{{id, c}}); err != nil {
+	c.CNPJ = id
+	if err := db.CreateCompanies(context.Background(), []company.Company{c}); err != nil {
 		return nil, fmt.Errorf("expected no error saving a company to postgres, got %w", err)
 	}
 	if err := db.PostLoad(); err != nil {
@@ -74,7 +77,10 @@ func TestPostgresCreateIndexes(t *testing.T) {
 	if err != nil {
 		t.Error("error reading company JSON file")
 	}
-	c := string(b)
+	var c company.Company
+	if err := json.Unmarshal(b, &c); err != nil {
+		t.Fatalf("expected no error unmarshalling test company, got %s", err)
+	}
 	pg, err := setUpPostgres(id, c)
 	if err != nil {
 		t.Errorf("expected no error setting up postgres, got %s", err)
@@ -99,7 +105,10 @@ func TestPostgresAllCompanies(t *testing.T) {
 	if err != nil {
 		t.Error("error reading company JSON file")
 	}
-	c := string(b)
+	var c company.Company
+	if err := json.Unmarshal(b, &c); err != nil {
+		t.Fatalf("expected no error unmarshalling test company, got %s", err)
+	}
 	pg, err := setUpPostgres(id, c)
 	if err != nil {
 		t.Errorf("expected no error setting up postgres, got %s", err)
@@ -114,10 +123,13 @@ func TestPostgresAllCompanies(t *testing.T) {
 
 	id2 := "00000000000000"
 	id3 := "11111111111111"
-	c2 := strings.Replace(c, id, id2, 1)
-	c3 := strings.Replace(c, id, id3, 1)
+	c2 := c
+	c2.CNPJ = id2
 
-	if err := pg.CreateCompanies(context.Background(), [][]string{{id2, c2}, {id3, c3}}); err != nil {
+	c3 := c
+	c3.CNPJ = id3
+
+	if err := pg.CreateCompanies(context.Background(), []company.Company{c2, c3}); err != nil {
 		t.Errorf("expected no error saving additional companies to postgres, got %s", err)
 		return
 	}
@@ -159,7 +171,10 @@ func TestPostgresGetNeighbors(t *testing.T) {
 	if err != nil {
 		t.Error("error reading company JSON file")
 	}
-	c := string(b)
+	var c company.Company
+	if err := json.Unmarshal(b, &c); err != nil {
+		t.Fatalf("expected no error unmarshalling test company, got %s", err)
+	}
 	pg, err := setUpPostgres(id, c)
 	if err != nil {
 		t.Errorf("expected no error setting up postgres, got %s", err)

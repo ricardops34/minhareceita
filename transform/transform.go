@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"codeberg.org/cuducos/minha-receita/company"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 )
@@ -71,7 +72,7 @@ var extraCounties = map[int]string{
 
 type database interface {
 	PreLoad() error
-	CreateCompanies(context.Context, [][]string) error
+	CreateCompanies(context.Context, []company.Company) error
 	PostLoad() error
 	CreateExtraIndexes([]string) error
 	MetaSave(string, string) error

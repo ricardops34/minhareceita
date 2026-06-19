@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"testing"
 
-	"codeberg.org/cuducos/minha-receita/transform"
+	"codeberg.org/cuducos/minha-receita/company"
 )
 
 type database interface {
@@ -20,11 +20,11 @@ type database interface {
 	PostLoad() error
 	Close()
 
-	CreateCompanies(context.Context, [][]string) error
-	GetCompany(context.Context, string) (string, error)
+	CreateCompanies(context.Context, []company.Company) error
+	GetCompany(context.Context, string) ([]byte, error)
 
 	CreateExtraIndexes([]string) error
-	Search(context.Context, *Query) (string, error)
+	Search(context.Context, *Query) ([]byte, error)
 
 	MetaSave(string, string) error
 	MetaRead(string) (string, error)
@@ -40,13 +40,13 @@ func (tc *testCase) name(db database) string {
 }
 
 type page struct {
-	Data   []transform.Company `json:"data"`
-	Cursor *string             `json:"cursor"`
+	Data   []company.Company `json:"data"`
+	Cursor *string           `json:"cursor"`
 }
 
-func assertSearchCount(t *testing.T, s string, tc testCase) {
+func assertSearchCount(t *testing.T, s []byte, tc testCase) {
 	var p page
-	if err := json.Unmarshal([]byte(s), &p); err != nil {
+	if err := json.Unmarshal(s, &p); err != nil {
 		t.Errorf("expected no error deserializing JSON, got %s", err)
 		return
 	}
@@ -55,18 +55,13 @@ func assertSearchCount(t *testing.T, s string, tc testCase) {
 	}
 }
 
-func assertCompaniesAreEqual(t *testing.T, s1 string, s2 string) {
-	toCompany := func(s string) transform.Company {
-		var c transform.Company
-		if err := json.Unmarshal([]byte(s), &c); err != nil {
-			t.Errorf("expected no error unmarshalling company, got %s", err)
-		}
-		return c
+func assertCompaniesAreEqual(t *testing.T, b []byte, exp company.Company) {
+	var got company.Company
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Errorf("expected no error unmarshalling company, got %s", err)
 	}
-	c1 := toCompany(s1)
-	c2 := toCompany(s2)
-	if !reflect.DeepEqual(c1, c2) {
-		t.Errorf("expected companies to be equal, got %s and %s", s1, s2)
+	if !reflect.DeepEqual(got, exp) {
+		t.Errorf("expected companies to be equal, got %+v and %+v", got, exp)
 	}
 }
 
@@ -76,7 +71,11 @@ func TestRetrieve(t *testing.T) {
 	if err != nil {
 		t.Error("error reading company JSON file")
 	}
-	c := string(b)
+	var c company.Company
+	if err := json.Unmarshal(b, &c); err != nil {
+		t.Fatalf("expected no error unmarshalling test company, got %s", err)
+	}
+	c.CNPJ = id
 	pg, err := setUpPostgres(id, c)
 	if err != nil {
 		t.Errorf("expected no error setting up postgres, got %s", err)
@@ -139,7 +138,11 @@ func TestSearch(t *testing.T) {
 	if err != nil {
 		t.Error("error reading company JSON file")
 	}
-	c := string(b)
+	var c company.Company
+	if err := json.Unmarshal(b, &c); err != nil {
+		t.Fatalf("expected no error unmarshalling test company, got %s", err)
+	}
+	c.CNPJ = id
 	pg, err := setUpPostgres(id, c)
 	if err != nil {
 		t.Errorf("expected no error setting up postgres, got %s", err)

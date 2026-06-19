@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"codeberg.org/cuducos/minha-receita/company"
 	"codeberg.org/cuducos/minha-receita/db"
 )
 
@@ -15,7 +16,7 @@ type database interface {
 
 	// transform
 	PreLoad() error
-	CreateCompanies(context.Context, [][]string) error
+	CreateCompanies(context.Context, []company.Company) error
 	PostLoad() error
 	MetaSave(string, string) error
 
@@ -23,8 +24,8 @@ type database interface {
 	CreateExtraIndexes(idxs []string) error
 
 	// api
-	GetCompany(context.Context, string) (string, error)
-	Search(context.Context, *db.Query) (string, error)
+	GetCompany(context.Context, string) ([]byte, error)
+	Search(context.Context, *db.Query) ([]byte, error)
 	MetaRead(string) (string, error)
 	AllCompanies(context.Context, *string, uint32) ([]string, *string, error)
 

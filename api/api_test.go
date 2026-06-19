@@ -17,20 +17,20 @@ import (
 
 type mockDatabase struct{}
 
-func (mockDatabase) GetCompany(ctx context.Context, n string) (string, error) {
+func (mockDatabase) GetCompany(ctx context.Context, n string) ([]byte, error) {
 	n = cnpj.Unmask(n)
 	if n != "19131243000197" {
-		return "", errors.New("Company not found")
+		return nil, errors.New("Company not found")
 	}
 
 	b, err := os.ReadFile(filepath.Join("..", "testdata", "response.json"))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return string(b), nil
+	return b, nil
 }
 
-func (mockDatabase) Search(ctx context.Context, q *db.Query) (string, error) { return "", nil }
+func (mockDatabase) Search(ctx context.Context, q *db.Query) ([]byte, error) { return nil, nil }
 
 func (mockDatabase) MetaRead(k string) (string, error) { return "42", nil }
 

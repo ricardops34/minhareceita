@@ -1,7 +1,7 @@
 package db
 
 import (
-	"fmt"
+	"bytes"
 	"log/slog"
 	"net/url"
 	"strconv"
@@ -113,12 +113,23 @@ func NewQuery(v url.Values) *Query {
 // builds a paginated search JSON response without depending on marshalling and
 // unmarhsalling results from the database (the assumption for performance is
 // that data coming from the database is valid JSON text).
-func newPage(d []string, c string) string {
-	ps := []string{fmt.Sprintf(`"data":[%s]`, strings.Join(d, ","))}
-	if c != "" {
-		ps = append(ps, fmt.Sprintf(`"cursor":"%s"`, c))
-	} else {
-		ps = append(ps, `"cursor":null`)
+func newPage(d [][]byte, c string) []byte {
+	var b bytes.Buffer
+	b.WriteString(`{"data":[`)
+	for i, v := range d {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.Write(v)
 	}
-	return fmt.Sprintf(`{%s}`, strings.Join(ps, ","))
+	b.WriteString(`],"cursor":`)
+	if c != "" {
+		b.WriteByte('"')
+		b.WriteString(c)
+		b.WriteByte('"')
+	} else {
+		b.WriteString(`null`)
+	}
+	b.WriteByte('}')
+	return b.Bytes()
 }

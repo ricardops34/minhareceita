@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"codeberg.org/cuducos/minha-receita/company"
 )
 
 func loadAllTestSources(t *testing.T, kv *kv) string {
@@ -40,47 +42,7 @@ func loadAllTestSources(t *testing.T, kv *kv) string {
 	return ext
 }
 
-var dataSituacaoCadastral = date(time.Date(2004, 5, 22, 0, 0, 0, 0, time.UTC))
-
-func TestMaskCPF(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		want string
-	}{
-		// MEI patterns (company name + CPF)
-		{"João Silva 12345678901", "João Silva ***45678***"},
-		{"Maria Santos ME 98765432109", "Maria Santos ME ***65432***"},
-		{"JOSE DA SILVA 11122233344", "JOSE DA SILVA ***22233***"},
-		{"COMERCIO DE ALIMENTOS LTDA 55566677788", "COMERCIO DE ALIMENTOS LTDA ***66677***"},
-		// Edge cases with non-digit before CPF
-		{"Empresa-12345678901", "Empresa-***45678***"},
-		{"Nome 12345678901", "Nome ***45678***"},
-		{"A12345678901", "A***45678***"},
-		// Should NOT mask: 12 consecutive digits (not CPF pattern)
-		{"Empresa123456789012", "Empresa123456789012"},
-		{"000012345678901", "000012345678901"},
-		// Should NOT mask: too short
-		{"1234567890", "1234567890"},
-		{"Short", "Short"},
-		// Should NOT mask: non-digits in tail
-		{"NomeEmpresa1234567890X", "NomeEmpresa1234567890X"},
-		{"Empresa 1234567890a", "Empresa 1234567890a"},
-		{"Test 123456-78901", "Test 123456-78901"},
-		// Exactly 11 chars (all digits)
-		{"12345678901", "***45678***"},
-		// UTF-8 cases
-		{"João José 12345678901", "João José ***45678***"},
-		{"Quitanda São Miguel 99988877766", "Quitanda São Miguel ***88877***"},
-		{"Café é Bom 12312312312", "Café é Bom ***12312***"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := maskCPF(tc.name)
-			if got != tc.want {
-				t.Errorf("expected masked %s to be %s, got %s", tc.name, tc.want, got)
-			}
-		})
-	}
-}
+var dataSituacaoCadastral = company.Date(time.Date(2004, 5, 22, 0, 0, 0, 0, time.UTC))
 
 func TestNewCompany(t *testing.T) {
 	row := []string{
@@ -163,7 +125,7 @@ func TestNewCompany(t *testing.T) {
 	if got.CodigoPais != nil {
 		t.Errorf("expected CodigoPais to be nil, got %v", got.CodigoPais)
 	}
-	if *got.DataInicioAtividade != date(time.Date(1967, 6, 30, 0, 0, 0, 0, time.UTC)) {
+	if *got.DataInicioAtividade != company.Date(time.Date(1967, 6, 30, 0, 0, 0, 0, time.UTC)) {
 		t.Errorf("expected DataInicioAtividade to be 1967-06-30, got %v", *got.DataInicioAtividade)
 	}
 	if *got.CNAEFiscal != 6204000 {
@@ -256,7 +218,7 @@ func TestNewCompany(t *testing.T) {
 	if *got.OpcaoPeloSimples != true {
 		t.Errorf("expected OpcaoPeloSimples to be true, got %v", *got.OpcaoPeloSimples)
 	}
-	if *got.DataOpcaoPeloSimples != date(time.Date(2014, 1, 1, 0, 0, 0, 0, time.UTC)) {
+	if *got.DataOpcaoPeloSimples != company.Date(time.Date(2014, 1, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Errorf("expected DataOpcaoPeloSimples to be 2014-01-01, got %v", *got.DataOpcaoPeloSimples)
 	}
 	if got.DataExclusaoDoSimples != nil {
@@ -358,7 +320,7 @@ func TestNewCompanyWithPrivacy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error creating a company, got %s", err)
 	}
-	got.withPrivacy()
+	got.WithPrivacy()
 	if got.Email != nil {
 		t.Errorf("expected Email to be nil after privacy, got %v", got.Email)
 	}

@@ -30,8 +30,8 @@ const (
 var cacheControl = fmt.Sprintf("max-age=%d", int(cacheMaxAge.Seconds()))
 
 type database interface {
-	GetCompany(context.Context, string) (string, error)
-	Search(context.Context, *db.Query) (string, error)
+	GetCompany(context.Context, string) ([]byte, error)
+	Search(context.Context, *db.Query) ([]byte, error)
 	MetaRead(string) (string, error)
 	AllCompanies(context.Context, *string, uint32) ([]string, *string, error)
 }
@@ -69,13 +69,13 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 	if app.cache != nil {
 		if s, ok := app.cache.get(id); ok {
 			cacheHits.Inc()
-			if s == "" {
+			if len(s) == 0 {
 				app.messageResponse(w, http.StatusNotFound, fmt.Sprintf("CNPJ %s não encontrado.", cnpj.Mask(pth)))
 				registerMetric("singleCompany", r.Method, http.StatusNotFound, i)
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-			if _, err := io.WriteString(w, s); err != nil {
+			if _, err := w.Write(s); err != nil {
 				slog.Error("error responding to cached single company request", "request", r, "error", err)
 			}
 			registerMetric("singleCompany", r.Method, http.StatusOK, i)
@@ -104,7 +104,7 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 		app.cache.set(id, s)
 	}
 	w.WriteHeader(http.StatusOK)
-	if _, err := io.WriteString(w, s); err != nil {
+	if _, err := w.Write(s); err != nil {
 		slog.Error("error responding to successful single company request", "request", r, "error", err)
 	}
 	registerMetric("singleCompany", r.Method, http.StatusOK, i)
@@ -140,7 +140,7 @@ func (app *api) paginatedSearch(q *db.Query, w http.ResponseWriter, r *http.Requ
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	if _, err := io.WriteString(w, s); err != nil {
+	if _, err := w.Write(s); err != nil {
 		slog.Error("error responding to successful paginated search request", "query", q, "request", r, "error", err)
 	}
 	registerMetric("paginatedSearch", r.Method, http.StatusOK, i)

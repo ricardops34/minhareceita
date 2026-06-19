@@ -15,7 +15,7 @@ const (
 )
 
 type cache struct {
-	r *ristretto.Cache[string, string]
+	r *ristretto.Cache[string, []byte]
 }
 
 func newCache(size int) (*cache, error) {
@@ -26,7 +26,7 @@ func newCache(size int) (*cache, error) {
 		return nil, fmt.Errorf("cache size too small, minimum is %dMB", minCacheSize)
 	}
 	c := int64(size) << 20 // convert MB to bytes
-	r, err := ristretto.NewCache(&ristretto.Config[string, string]{
+	r, err := ristretto.NewCache(&ristretto.Config[string, []byte]{
 		MaxCost:     c,
 		NumCounters: c / avgSize * 10,
 		BufferItems: 64,
@@ -37,10 +37,10 @@ func newCache(size int) (*cache, error) {
 	return &cache{r}, nil
 }
 
-func (c *cache) get(key string) (string, bool) {
+func (c *cache) get(key string) ([]byte, bool) {
 	return c.r.Get(key)
 }
 
-func (c *cache) set(key, value string) {
+func (c *cache) set(key string, value []byte) {
 	c.r.Set(key, value, int64(len(value)))
 }

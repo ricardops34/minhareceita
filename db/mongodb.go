@@ -2,12 +2,13 @@ package db
 
 import (
 	"context"
-	"encoding/json/v2"
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
+	"codeberg.org/cuducos/minha-receita/company"
 	"codeberg.org/cuducos/minha-receita/transform"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -15,9 +16,11 @@ import (
 )
 
 type mongoRecord struct {
-	Id   string            `json:"id" bson:"id"`
-	Json transform.Company `json:"json" bson:"json"`
+	Id   string           `json:"id" bson:"id"`
+	Json *company.Company `json:"json" bson:"json"`
 }
+
+func newMongoRecord(c *company.Company) mongoRecord { return mongoRecord{c.CNPJ, c} }
 
 type MongoDB struct {
 	client *mongo.Client
@@ -87,29 +90,25 @@ func (m *MongoDB) Drop() error {
 }
 
 // CreateCompanies writes a batch of company data to MongoDB
-func (m *MongoDB) CreateCompanies(ctx context.Context, batch [][]string) error {
+func (m *MongoDB) CreateCompanies(ctx context.Context, cs []company.Company) error {
 	if m == nil {
 		return fmt.Errorf("mongodb connection not initialized")
-	}
-	coll := m.db.Collection(companyTableName)
-	var cs []any // required by MongoDb pkg
-	for _, c := range batch {
-		if len(c) < 2 {
-			return fmt.Errorf("line skipped due to insufficient length: %s", c)
-		}
-		var r mongoRecord
-		r.Id = c[0]
-		err := json.Unmarshal([]byte(c[1]), &r.Json)
-		if err != nil {
-			return fmt.Errorf("error deserializing JSON: %s\nerror: %w", c[1], err)
-		}
-		cs = append(cs, r)
 	}
 	if len(cs) == 0 {
 		return nil
 	}
 
-	_, err := coll.InsertMany(ctx, cs)
+	coll := m.db.Collection(companyTableName)
+	docs := make([]any, len(cs)) // required by MongoDb pkg
+	var g sync.WaitGroup
+	for i, c := range cs {
+		g.Go(func() {
+			docs[i] = newMongoRecord(&c)
+		})
+	}
+	g.Wait()
+
+	_, err := coll.InsertMany(ctx, docs)
 	if err != nil {
 		return fmt.Errorf("error inserting companies into MongoDB: %w", err)
 	}
@@ -208,30 +207,30 @@ func (m *MongoDB) PostLoad() error {
 	return nil
 }
 
-func (m *MongoDB) GetCompany(ctx context.Context, id string) (string, error) {
+func (m *MongoDB) GetCompany(ctx context.Context, id string) ([]byte, error) {
 	coll := m.db.Collection(companyTableName)
 	var r bson.Raw
 	err := coll.FindOne(ctx, bson.M{idFieldName: id}).Decode(&r)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return "", fmt.Errorf("no document found for CNPJ %s", id)
+			return nil, fmt.Errorf("no document found for CNPJ %s", id)
 		}
-		return "", fmt.Errorf("error querying CNPJ %s: %w", id, err)
+		return nil, fmt.Errorf("error querying CNPJ %s: %w", id, err)
 	}
 	c, err := r.LookupErr("json")
 	if err != nil {
-		return "", fmt.Errorf("error getting json for company %s: %w", id, err)
+		return nil, fmt.Errorf("error getting json for company %s: %w", id, err)
 	}
 	b, err := bson.MarshalExtJSON(c, false, false)
 	if err != nil {
-		return "", fmt.Errorf("error marshalling json for company %s: %w", id, err)
+		return nil, fmt.Errorf("error marshalling json for company %s: %w", id, err)
 	}
-	return string(b), nil
+	return b, nil
 }
 
 // Search returns paginated results with JSON for companies bases on a search
 // query
-func (m *MongoDB) Search(ctx context.Context, q *Query) (string, error) {
+func (m *MongoDB) Search(ctx context.Context, q *Query) ([]byte, error) {
 	coll := m.db.Collection(companyTableName)
 	f := bson.M{}
 	if len(q.UF) > 0 {
@@ -287,14 +286,14 @@ func (m *MongoDB) Search(ctx context.Context, q *Query) (string, error) {
 	if q.Cursor != nil {
 		id, err := bson.ObjectIDFromHex(*q.Cursor)
 		if err != nil {
-			return "", fmt.Errorf("error parsing cursor: %w", err)
+			return nil, fmt.Errorf("error parsing cursor: %w", err)
 		}
 		f["_id"] = bson.M{"$gt": id}
 	}
 	opts := options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}).SetLimit(int64(q.Limit))
 	c, err := coll.Find(ctx, f, opts)
 	if err != nil {
-		return "", fmt.Errorf("error running query %#v: %w", q, err)
+		return nil, fmt.Errorf("error running query %#v: %w", q, err)
 	}
 	defer func() {
 		if err := c.Close(ctx); err != nil {
@@ -303,19 +302,19 @@ func (m *MongoDB) Search(ctx context.Context, q *Query) (string, error) {
 	}()
 	var rs []bson.Raw
 	if err := c.All(ctx, &rs); err != nil {
-		return "", fmt.Errorf("error decoding results: %w", err)
+		return nil, fmt.Errorf("error decoding results: %w", err)
 	}
-	var cs []string
+	var cs [][]byte
 	for _, r := range rs {
 		c, err := r.LookupErr("json")
 		if err != nil {
-			return "", fmt.Errorf("error getting json from result: %w", err)
+			return nil, fmt.Errorf("error getting json from result: %w", err)
 		}
 		b, err := bson.MarshalExtJSON(c, false, false)
 		if err != nil {
-			return "", fmt.Errorf("error marshalling json from result: %w", err)
+			return nil, fmt.Errorf("error marshalling json from result: %w", err)
 		}
-		cs = append(cs, string(b))
+		cs = append(cs, b)
 	}
 	var cur string
 	if len(rs) == int(q.Limit) {

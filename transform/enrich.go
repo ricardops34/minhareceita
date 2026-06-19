@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"codeberg.org/cuducos/minha-receita/company"
 	"github.com/dgraph-io/badger/v4"
 )
 
@@ -37,7 +38,7 @@ func stringFromKV(srcs map[string]*source, kv *kv, prefix string, id string, idx
 	return &v[idx], nil
 }
 
-func (c *Company) base(log *slog.Logger, srcs map[string]*source, kv *kv) error {
+func base(c *company.Company, log *slog.Logger, srcs map[string]*source, kv *kv) error {
 	var err error
 	row, err := stringsFromKV(srcs, kv, "emp", c.CNPJ[:8])
 	if err != nil {
@@ -73,14 +74,14 @@ func (c *Company) base(log *slog.Logger, srcs map[string]*source, kv *kv) error 
 	if err != nil {
 		return fmt.Errorf("could not parse CodigoParse for %s: %w", c.CNPJ, err)
 	}
-	if err := c.porte(log); err != nil {
+	if err := porte(c, log); err != nil {
 		return err
 	}
 	c.EnteFederativoResponsavel = row[5]
 	return nil
 }
 
-func (c *Company) simples(srcs map[string]*source, kv *kv) error {
+func simples(c *company.Company, srcs map[string]*source, kv *kv) error {
 	var err error
 	row, err := stringsFromKV(srcs, kv, "sim", c.CNPJ[:8])
 	if err != nil {
@@ -116,7 +117,7 @@ func (c *Company) simples(srcs map[string]*source, kv *kv) error {
 	return nil
 }
 
-func (c *Company) cnaes(srcs map[string]*source, kv *kv, codes string) error {
+func cnaes(c *company.Company, srcs map[string]*source, kv *kv, codes string) error {
 	for code := range strings.SplitSeq(codes, ",") {
 		d, err := stringFromKV(srcs, kv, "cna", code, 0)
 		if err != nil {
@@ -129,12 +130,12 @@ func (c *Company) cnaes(srcs map[string]*source, kv *kv, codes string) error {
 		if err != nil {
 			return fmt.Errorf("could not parse CNAESecundarios for %s: %w", c.CNPJ, err)
 		}
-		c.CNAESecundarios = append(c.CNAESecundarios, CNAE{*n, *d})
+		c.CNAESecundarios = append(c.CNAESecundarios, company.CNAE{Codigo: *n, Descricao: *d})
 	}
 	return nil
 }
 
-func (c *Company) partners(log *slog.Logger, srcs map[string]*source, kv *kv) error {
+func partners(c *company.Company, log *slog.Logger, srcs map[string]*source, kv *kv) error {
 	src, ok := srcs["soc"]
 	if !ok {
 		return errors.New("could not find lookup soc")
@@ -148,7 +149,7 @@ func (c *Company) partners(log *slog.Logger, srcs map[string]*source, kv *kv) er
 		return fmt.Errorf("could not find %s", string(k))
 	}
 	for _, row := range rows {
-		var p Partner
+		var p company.Partner
 		var err error
 		p.IdentificadorDeSocio, err = toInt(row[0])
 		if err != nil {
@@ -228,7 +229,7 @@ func (c *Company) partners(log *slog.Logger, srcs map[string]*source, kv *kv) er
 	return nil
 }
 
-func (c *Company) taxes(srcs map[string]*source, kv *kv) error {
+func taxes(c *company.Company, srcs map[string]*source, kv *kv) error {
 	for _, p := range []string{"arb", "imu", "pre", "rea"} {
 		src, ok := srcs[p]
 		if !ok {
@@ -243,7 +244,7 @@ func (c *Company) taxes(srcs map[string]*source, kv *kv) error {
 			return fmt.Errorf("could not find %s", string(k))
 		}
 		for _, row := range rows {
-			var t TaxRegime
+			var t company.TaxRegime
 			y, err := toInt(row[0])
 			if err != nil {
 				return fmt.Errorf("could not parse Ano for %s: %w", string(k), err)
@@ -267,7 +268,7 @@ func (c *Company) taxes(srcs map[string]*source, kv *kv) error {
 	return nil
 }
 
-func (c *Company) descricaoMatrizFilial(log *slog.Logger) error {
+func descricaoMatrizFilial(c *company.Company, log *slog.Logger) error {
 	if c.IdentificadorMatrizFilial == nil {
 		return fmt.Errorf("company %s missing IdentificadorMatrizFilial", c.CNPJ)
 	}
@@ -285,7 +286,7 @@ func (c *Company) descricaoMatrizFilial(log *slog.Logger) error {
 	return nil
 }
 
-func (c *Company) descricaoSituacaoCadastral(log *slog.Logger) error {
+func descricaoSituacaoCadastral(c *company.Company, log *slog.Logger) error {
 	if c.SituacaoCadastral == nil {
 		return fmt.Errorf("company %s missing SituacaoCadastral", c.CNPJ)
 	}
@@ -309,7 +310,7 @@ func (c *Company) descricaoSituacaoCadastral(log *slog.Logger) error {
 	return nil
 }
 
-func (c *Company) porte(log *slog.Logger) error {
+func porte(c *company.Company, log *slog.Logger) error {
 	if c.CodigoPorte == nil {
 		return nil
 	}

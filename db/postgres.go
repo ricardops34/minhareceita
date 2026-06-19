@@ -17,6 +17,9 @@ import (
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/sync/errgroup"
+
+	"codeberg.org/cuducos/minha-receita/company"
 )
 
 const (
@@ -156,12 +159,22 @@ func (p *PostgreSQL) Drop() error {
 }
 
 // CreateCompanies performs a copy to create a batch of companies in the
-// database. It expects an array and each item should be another array with only
-// two items: the ID and the JSON field values.
-func (p *PostgreSQL) CreateCompanies(ctx context.Context, batch [][]string) error {
-	b := make([][]any, len(batch))
-	for i, r := range batch {
-		b[i] = []any{r[0], r[1]}
+// database.
+func (p *PostgreSQL) CreateCompanies(ctx context.Context, cs []company.Company) error {
+	b := make([][]any, len(cs))
+	var g errgroup.Group
+	for i := range cs {
+		g.Go(func() error {
+			j, err := cs[i].JSON()
+			if err != nil {
+				return fmt.Errorf("error serializing company to JSON during import: %w", err)
+			}
+			b[i] = []any{cs[i].CNPJ, string(j)}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return err
 	}
 	_, err := p.pool.CopyFrom(
 		ctx,
@@ -176,14 +189,14 @@ func (p *PostgreSQL) CreateCompanies(ctx context.Context, batch [][]string) erro
 }
 
 // GetCompany returns the JSON of a company based on a CNPJ number.
-func (p *PostgreSQL) GetCompany(ctx context.Context, id string) (string, error) {
+func (p *PostgreSQL) GetCompany(ctx context.Context, id string) ([]byte, error) {
 	rows, err := p.pool.Query(ctx, p.getCompanyQuery, id)
 	if err != nil {
-		return "", fmt.Errorf("error looking for cnpj %s: %w", id, err)
+		return nil, fmt.Errorf("error looking for cnpj %s: %w", id, err)
 	}
-	j, err := pgx.CollectOneRow(rows, pgx.RowTo[string])
+	j, err := pgx.CollectOneRow(rows, pgx.RowTo[[]byte])
 	if err != nil {
-		return "", fmt.Errorf("error reading cnpj %s: %w", id, err)
+		return nil, fmt.Errorf("error reading cnpj %s: %w", id, err)
 	}
 	return j, nil
 }
@@ -254,23 +267,23 @@ func (p *PostgreSQL) searchQuery(q *Query) *sqlbuilder.SelectBuilder {
 
 type postgresRecord struct {
 	Cursor  int
-	Company string
+	Company []byte
 }
 
 // Search returns paginated results with JSON for companies bases on a search
 // query
-func (p *PostgreSQL) Search(ctx context.Context, q *Query) (string, error) {
+func (p *PostgreSQL) Search(ctx context.Context, q *Query) ([]byte, error) {
 	s, a := p.searchQuery(q).Build()
 	slog.Debug("paginated search", "query", s, "args", a)
 	rows, err := p.pool.Query(ctx, s, a...)
 	if err != nil {
-		return "", fmt.Errorf("error searching for %#v: %w", q, err)
+		return nil, fmt.Errorf("error searching for %#v: %w", q, err)
 	}
 	rs, err := pgx.CollectRows(rows, pgx.RowToStructByPos[postgresRecord])
 	if err != nil {
-		return "", fmt.Errorf("error reading search result for %#v: %w", q, err)
+		return nil, fmt.Errorf("error reading search result for %#v: %w", q, err)
 	}
-	var cs []string
+	var cs [][]byte
 	for _, r := range rs {
 		cs = append(cs, r.Company)
 	}
@@ -279,7 +292,6 @@ func (p *PostgreSQL) Search(ctx context.Context, q *Query) (string, error) {
 		cur = fmt.Sprintf("%d", rs[len(rs)-1].Cursor)
 	}
 	return newPage(cs, cur), nil
-
 }
 
 // PreLoad runs before starting to load data into the database. Currently it
@@ -360,6 +372,11 @@ func (p *PostgreSQL) CreateExtraIndexes(idxs []string) error {
 	return nil
 }
 
+type postgresIDRecord struct {
+	Cursor int
+	ID     string
+}
+
 // AllCompanies returns a paginated list of CNPJ numbers from the database.
 func (p *PostgreSQL) AllCompanies(ctx context.Context, cursor *string, limit uint32) ([]string, *string, error) {
 	b := sqlbuilder.PostgreSQL.NewSelectBuilder().
@@ -382,14 +399,14 @@ func (p *PostgreSQL) AllCompanies(ctx context.Context, cursor *string, limit uin
 		return nil, nil, fmt.Errorf("error listing CNPJs: %w", err)
 	}
 
-	rows, err := pgx.CollectRows(q, pgx.RowToStructByPos[postgresRecord])
+	rows, err := pgx.CollectRows(q, pgx.RowToStructByPos[postgresIDRecord])
 	if err != nil {
 		return nil, nil, fmt.Errorf("error reading CNPJs: %w", err)
 	}
 
 	ids := make([]string, len(rows))
 	for i, r := range rows {
-		ids[i] = r.Company
+		ids[i] = r.ID
 	}
 
 	if len(rows) < int(limit) {

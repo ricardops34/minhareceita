@@ -2,7 +2,6 @@ package transform
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/csv"
 	"errors"
@@ -15,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"codeberg.org/cuducos/minha-receita/company"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/encoding/charmap"
 
@@ -27,7 +27,6 @@ type writer struct {
 	srcs    map[string]*source
 	batch   int
 	privacy bool
-	buf     *sync.Pool
 	bar     *progressbar.ProgressBar
 	log     *slog.Logger
 	logFile *os.File
@@ -102,7 +101,7 @@ func (w *writer) processCSV(ctx context.Context, f *zip.File) error {
 	cr := countReader{r, 0}
 	csvr := csv.NewReader(charmap.ISO8859_15.NewDecoder().Reader(&cr))
 	csvr.Comma = w.src.sep
-	b := make([][]string, 0, w.batch)
+	b := make([]company.Company, 0, w.batch)
 	var prev int64
 	for {
 		select {
@@ -130,13 +129,9 @@ func (w *writer) processCSV(ctx context.Context, f *zip.File) error {
 				return fmt.Errorf("could not create company %v: %w", row[:3], err)
 			}
 			if w.privacy {
-				c.withPrivacy()
+				c.WithPrivacy()
 			}
-			j, err := c.JSON(w.buf)
-			if err != nil {
-				return err
-			}
-			b = append(b, []string{c.CNPJ, j})
+			b = append(b, *c)
 			if len(b) >= w.batch {
 				if err := w.db.CreateCompanies(ctx, b); err != nil {
 					return err
@@ -183,18 +178,12 @@ func newWriter(db database, kv *kv, srcs map[string]*source, batch int, privacy 
 		return nil, fmt.Errorf("could not create log file %s: %w", n, err)
 	}
 	log := slog.New(slog.NewJSONHandler(f, nil))
-	buf := &sync.Pool{
-		New: func() any {
-			return &bytes.Buffer{}
-		},
-	}
 	return &writer{
 		db:      db,
 		kv:      kv,
 		srcs:    srcs,
 		batch:   batch,
 		privacy: privacy,
-		buf:     buf,
 		bar:     bar,
 		log:     log,
 		logFile: f,

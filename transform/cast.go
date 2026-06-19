@@ -6,8 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/x/bsonx/bsoncore"
+	"codeberg.org/cuducos/minha-receita/company"
 )
 
 const (
@@ -52,62 +51,9 @@ func toBool(v string) *bool {
 	return &b
 }
 
-type date time.Time
-
-func (d *date) UnmarshalJSON(b []byte) error {
-	s := strings.Trim(string(b), `"`)
-	if s == "" || s == "null" {
-		return nil
-	}
-	t, err := time.Parse(dateOutputFormat, s)
-	if err != nil {
-		return err
-	}
-	*d = date(t)
-	return nil
-}
-
-func (d *date) MarshalJSON() ([]byte, error) {
-	t := time.Time(*d)
-	return []byte(`"` + t.Format(dateOutputFormat) + `"`), nil
-}
-
-func (d date) MarshalBSONValue() (byte, []byte, error) {
-	t := time.Time(d)
-	return byte(bson.TypeString), bsoncore.AppendString(nil, t.Format(dateOutputFormat)), nil
-}
-
-func (d *date) UnmarshalBSONValue(t byte, v []byte) error {
-	switch t {
-	case byte(bson.TypeString):
-		s, _, ok := bsoncore.ReadString(v)
-		if !ok {
-			return fmt.Errorf("invalid bson string")
-		}
-		if s == "" {
-			return nil
-		}
-		p, err := time.Parse(dateOutputFormat, s)
-		if err != nil {
-			return fmt.Errorf("invalid date parse: %s", err)
-		}
-		*d = date(p)
-		return nil
-	case byte(bson.TypeDateTime):
-		i, _, ok := bsoncore.ReadDateTime(v)
-		if !ok {
-			return fmt.Errorf("invalid bson datetime")
-		}
-		*d = date(time.UnixMilli(i))
-		return nil
-	default:
-		return fmt.Errorf("unsupported bson type for date: %v", t)
-	}
-}
-
 // toDate expects a date as string in the format YYYYMMDD (that is the format
 // used by the Federal Revenue in their CSV files).
-func toDate(v string) (*date, error) {
+func toDate(v string) (*company.Date, error) {
 	onlyZeros := func(s string) bool {
 		v, err := strconv.Atoi(s)
 		if err != nil {
@@ -122,6 +68,6 @@ func toDate(v string) (*date, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error converting %s to Time: %w", v, err)
 	}
-	d := date(t)
+	d := company.Date(t)
 	return &d, nil
 }

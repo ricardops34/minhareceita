@@ -4,6 +4,8 @@ import (
 	"encoding/json/v2"
 	"testing"
 	"time"
+
+	"codeberg.org/cuducos/minha-receita/company"
 )
 
 func TestToInt(t *testing.T) {
@@ -114,11 +116,11 @@ func TestToDate(t *testing.T) {
 		if err != nil {
 			t.Errorf("could not create a date for the test")
 		}
-		expected := date(d)
+		expected := company.Date(d)
 
 		tc := []struct {
 			value    string
-			expected *date
+			expected *company.Date
 		}{
 			{v, &expected},
 			{"", nil},
@@ -157,7 +159,7 @@ func TestToDate(t *testing.T) {
 
 func TestDate(t *testing.T) {
 	t.Run("successful unmarshal and marshal", func(t *testing.T) {
-		var d date
+		var d company.Date
 		err := json.Unmarshal([]byte(`"1967-06-30"`), &d)
 		if err != nil {
 			t.Errorf("expected no error on date Unmarshal, got %s", err)
