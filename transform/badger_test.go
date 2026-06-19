@@ -1,6 +1,7 @@
 package transform
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -34,6 +35,56 @@ func TestSerializeDeserialize(t *testing.T) {
 				if got[idx] != tc.row[idx] {
 					t.Errorf("expected element %d to be %s, got %s", idx+1, tc.row[idx], got[idx])
 				}
+			}
+		})
+	}
+}
+
+// TestDeserializeLargeValue trava a regressão do bug do buffer:
+// valores acima de defaultPoolSize (512) não podem causar panic.
+func TestDeserializeLargeValue(t *testing.T) {
+	kv, err := newBadger(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("expected no error opening badger, got %s", err)
+	}
+	defer func() {
+		if err := kv.db.Close(); err != nil {
+			t.Errorf("expected no error closing badger, got %s", err)
+		}
+	}()
+
+	for _, tc := range []struct {
+		name string
+		size int
+	}{
+		{"below pool size", defaultPoolSize - 1}, // 511
+		{"exact pool size", defaultPoolSize},     // 512
+		{"above pool size", defaultPoolSize + 1}, // 513 — ANTES do fix: panic
+		{"way above", defaultPoolSize * 4},       // 2048
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			want := strings.Repeat("a", tc.size)
+			row := []string{want}
+
+			s, err := kv.serialize(row)
+			if err != nil {
+				t.Fatalf("expected no error serializing, got %s", err)
+			}
+
+			// antes do fix, valores acima de defaultPoolSize causavam panic aqui.
+			got, err := kv.deserialize(s)
+			if err != nil {
+				t.Fatalf("expected no error deserializing, got %s", err)
+			}
+
+			if len(got) != 1 {
+				t.Fatalf("expected 1 element, got %d", len(got))
+			}
+			if len(got[0]) != tc.size {
+				t.Errorf("expected element with %d bytes, got %d", tc.size, len(got[0]))
+			}
+			if got[0] != want {
+				t.Errorf("deserialized value does not match the original")
 			}
 		})
 	}
