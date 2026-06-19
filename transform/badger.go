@@ -50,10 +50,11 @@ func (kv *kv) deserialize(val []byte) ([]string, error) {
 				return fmt.Errorf("error reading size: %w", err)
 			}
 			b := kv.pool.Get().(*[]byte)
-			*b = (*b)[:s]
 			defer kv.pool.Put(b)
 			if cap(*b) < int(s) {
-				return fmt.Errorf("buffer from pool too small (%d): needs %d", cap(*b), s)
+				*b = make([]byte, s)
+			} else {
+				*b = (*b)[:s]
 			}
 			n, err := io.ReadFull(r, *b)
 			if err != nil {
