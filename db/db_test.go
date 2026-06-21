@@ -187,6 +187,9 @@ func TestSearch(t *testing.T) {
 		{map[string][]string{"cnpf": {"21449073000135"}}, 0},
 		{map[string][]string{"cnpf": {"***112108**"}}, 1},
 		{map[string][]string{"cnpf": {"21449073000135", "***112108**"}}, 1},
+		{map[string][]string{"municipio": {"7107"}, "cnae": {"6204000"}}, 1},
+		{map[string][]string{"municipio": {"6105"}, "cnae": {"6204000"}}, 0},
+		{map[string][]string{"municipio": {"7107"}, "cnae": {"722702"}}, 0},
 	} {
 		for _, db := range []database{pg, m} {
 			t.Run(tc.name(db), func(t *testing.T) {

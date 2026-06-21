@@ -233,6 +233,7 @@ func (m *MongoDB) GetCompany(ctx context.Context, id string) ([]byte, error) {
 func (m *MongoDB) Search(ctx context.Context, q *Query) ([]byte, error) {
 	coll := m.db.Collection(companyTableName)
 	f := bson.M{}
+	var ors []bson.M
 	if len(q.UF) > 0 {
 		if len(q.UF) == 1 {
 			f["json.uf"] = q.UF[0]
@@ -242,15 +243,15 @@ func (m *MongoDB) Search(ctx context.Context, q *Query) ([]byte, error) {
 	}
 	if len(q.Municipio) > 0 {
 		if len(q.Municipio) == 1 {
-			f["$or"] = []bson.M{
+			ors = append(ors, bson.M{"$or": []bson.M{
 				{"json.codigo_municipio": q.Municipio[0]},
 				{"json.codigo_municipio_ibge": q.Municipio[0]},
-			}
+			}})
 		} else {
-			f["$or"] = []bson.M{
+			ors = append(ors, bson.M{"$or": []bson.M{
 				{"json.codigo_municipio": bson.M{"$in": q.Municipio}},
 				{"json.codigo_municipio_ibge": bson.M{"$in": q.Municipio}},
-			}
+			}})
 		}
 	}
 	if len(q.NaturezaJuridica) > 0 {
@@ -269,19 +270,27 @@ func (m *MongoDB) Search(ctx context.Context, q *Query) ([]byte, error) {
 	}
 	if len(q.CNAE) > 0 {
 		if len(q.CNAE) == 1 {
-			f["$or"] = []bson.M{
+			ors = append(ors, bson.M{"$or": []bson.M{
 				{"json.cnae_fiscal": q.CNAE[0]},
 				{"json.cnaes_secundarios.codigo": bson.M{"$in": q.CNAE}},
-			}
+			}})
 		} else {
-			f["$or"] = []bson.M{
+			ors = append(ors, bson.M{"$or": []bson.M{
 				{"json.cnae_fiscal": bson.M{"$in": q.CNAE}},
 				{"json.cnaes_secundarios.codigo": bson.M{"$in": q.CNAE}},
-			}
+			}})
 		}
 	}
 	if len(q.CNPF) > 0 {
 		f["json.qsa.cnpj_cpf_do_socio"] = bson.M{"$in": q.CNPF}
+	}
+	switch len(ors) {
+	case 0:
+		// no $or group, nothing to do
+	case 1:
+		f["$or"] = ors[0]["$or"]
+	default:
+		f["$and"] = ors
 	}
 	if q.Cursor != nil {
 		id, err := bson.ObjectIDFromHex(*q.Cursor)
