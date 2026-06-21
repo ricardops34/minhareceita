@@ -286,7 +286,7 @@ func (m *MongoDB) Search(ctx context.Context, q *Query) ([]byte, error) {
 	}
 	switch len(ors) {
 	case 0:
-		// nenhum grupo $or, nada a fazer
+		// no $or group, nothing to do
 	case 1:
 		f["$or"] = ors[0]["$or"]
 	default:
