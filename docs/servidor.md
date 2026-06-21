@@ -17,19 +17,27 @@ Usando MongoDB, a URI será `mongodb://minhareceita:minhareceita@localhost:27017
 
 ### Provisionando o banco de dados
 
-O comando `provision` instala e configura o PostgreSQL em um servidor remoto via SSH e exibe as credenciais de acesso.
+O comando `provision db` instala e configura o PostgreSQL em um servidor remoto via SSH, salva as credenciais em `/etc/minha-receita/.env` e exibe as credenciais de acesso apenas uma vez (quando criadas). O processo cria dois usuários no Postgres: `etl` (com permissões de escrita) e `web` (apenas leitura), ambos tem senhas distintas e aleatórias.
 
-* [Pulumi CLI](https://www.pulumi.com/)
+O comando `provision web` inicia a API web principal (`minhareceita.org`) e a API do grafo (`grafo.minhareceita.org`) no mesmo servidor, usando as credenciais salvas pelo `provision db`. Só pode ser executado depois do `provision db`.
+
+#### Requisitos
+
 * servidor Debian ou Ubuntu
-* acesso SSH (acesso com senha não é permitido) e acesso `sudo` ao servidor de destino
+* cliente SSH disponível no `$PATH`
+* acesso SSH (chave ou SSH agent) e acesso `sudo` ao servidor de destino
+
+#### Exemplos
 
 ```console
-$ minha-receita provision root@200.100.0.1
+$ minha-receita provision db root@200.100.0.1
 ```
 
-O comando cria dois usuários no Postgres: `etl` (com permissões de escrita) e `web` (apenas leitura), ambos tem senhas distintas e aleatórias que são exibidas apenas uma única vez ao final do comando.
+E, depois de carregar os dados:
 
-As URIs exibidas podem ser usadas nas variáveis `DATABASE_URL` do ETL e da API web.
+```console
+$ minha-receita provision web root@200.100.0.1
+```
 
 ## Dados
 

@@ -10,8 +10,8 @@ BEGIN
 END
 $$;
 
-ALTER ROLE etl WITH PASSWORD '{{ .EtlPass }}';
-ALTER ROLE web WITH PASSWORD '{{ .WebPass }}';
+ALTER ROLE etl WITH PASSWORD '{{ .ETL }}';
+ALTER ROLE web WITH PASSWORD '{{ .Web }}';
 
 SELECT 'CREATE DATABASE minhareceita{{ .Suffix }} OWNER etl'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'minhareceita{{ .Suffix }}')

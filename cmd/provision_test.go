@@ -31,7 +31,7 @@ func TestParseTarget(t *testing.T) {
 	} {
 		t.Run(c.in, func(t *testing.T) {
 			t.Parallel()
-			u, h, p, err := parseTarget(c.in)
+			target, err := newTarget([]string{c.in})
 			if c.fail != "" {
 				if err == nil || !strings.Contains(err.Error(), c.fail) {
 					t.Errorf("expected an error when parsing %q, got %v", c.in, err)
@@ -42,9 +42,29 @@ func TestParseTarget(t *testing.T) {
 				t.Errorf("expected no error when parsing %q, got %v", c.in, err)
 				return
 			}
-			if u != c.user || h != c.host || p != c.port {
-				t.Errorf("expected (%q,%q,%q) when parsing %q, got (%q,%q,%q)", c.user, c.host, c.port, c.in, u, h, p)
+			if target.user != c.user || target.host != c.host || target.port != c.port {
+				t.Errorf("expected (%q,%q,%q) when parsing %q, got (%q,%q,%q)", c.user, c.host, c.port, c.in, target.user, target.host, target.port)
 			}
 		})
+	}
+}
+
+func TestDBURL(t *testing.T) {
+	t.Parallel()
+	u := dbURL("web", "secret", "localhost", "_test")
+	want := "postgres://web:secret@localhost:5432/minhareceita_test"
+	if u != want {
+		t.Errorf("expected %q, got %q", want, u)
+	}
+}
+
+func TestPassword(t *testing.T) {
+	t.Parallel()
+	p, err := password()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(p) < 32 {
+		t.Errorf("expected password length >= 32, got %d", len(p))
 	}
 }
