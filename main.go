@@ -13,7 +13,7 @@ type handler struct {
 	stderr slog.Handler
 }
 
-func (h *handler) Enabled(ctx context.Context, l slog.Level) bool { return true }
+func (h *handler) Enabled(ctx context.Context, l slog.Level) bool { return h.stdout.Enabled(ctx, l) }
 
 func (h *handler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &handler{h.stdout.WithAttrs(attrs), h.stderr.WithAttrs(attrs)}
