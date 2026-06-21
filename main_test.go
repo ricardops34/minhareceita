@@ -13,12 +13,12 @@ func TestHandlerEnabled(t *testing.T) {
 		name       string
 		configured slog.Level
 		logged     slog.Level
-		wantOutput bool
+		want       bool
 	}{
-		{"debug filtrado quando nível é Info", slog.LevelInfo, slog.LevelDebug, false},
-		{"info passa quando nível é Info", slog.LevelInfo, slog.LevelInfo, true},
-		{"debug passa quando nível é Debug", slog.LevelDebug, slog.LevelDebug, true},
-		{"error passa quando nível é Info", slog.LevelInfo, slog.LevelError, true},
+		{"debug filtered when level is Info", slog.LevelInfo, slog.LevelDebug, false},
+		{"info passes when level is Info", slog.LevelInfo, slog.LevelInfo, true},
+		{"debug passes when level is Debug", slog.LevelDebug, slog.LevelDebug, true},
+		{"error passes when level is Info", slog.LevelInfo, slog.LevelError, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -31,13 +31,13 @@ func TestHandlerEnabled(t *testing.T) {
 			}
 			logger := slog.New(h)
 
-			logger.Log(t.Context(), tc.logged, "mensagem de teste")
+			logger.Log(t.Context(), tc.logged, "test message")
 
-			gotOutput := buf.Len() > 0
-			if gotOutput != tc.wantOutput {
+			got := buf.Len() > 0
+			if got != tc.want {
 				t.Errorf(
-					"nível configurado %s, log %s: saída=%v, esperado=%v\nbuffer: %q",
-					tc.configured, tc.logged, gotOutput, tc.wantOutput, buf.String(),
+					"configured level %s, logged %s: output=%v, want=%v\nbuffer: %q",
+					tc.configured, tc.logged, got, tc.want, buf.String(),
 				)
 			}
 		})
