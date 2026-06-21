@@ -7,9 +7,7 @@ import (
 	"embed"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -24,8 +22,6 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/spf13/cobra"
 )
-
-const ipifyURL = "https://api.ipify.org"
 
 var (
 	//go:embed provision
@@ -45,29 +41,6 @@ func password() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
-}
-
-func publicIP(ctx context.Context) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ipifyURL, nil)
-	if err != nil {
-		return "", err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			slog.Warn("could not close HTTP response body", "error", err)
-		}
-	}()
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(b)), nil
 }
 
 func parseTarget(s string) (u, h, p string, err error) {
@@ -137,17 +110,13 @@ Passwords are randomly generated and printed to stdout.
 		}
 
 		ctx := context.Background()
-		ip, err := publicIP(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to detect public IP: %w", err)
-		}
 
 		var buf bytes.Buffer
 		t, err := template.ParseFS(provision, "provision/install.sh")
 		if err != nil {
 			return fmt.Errorf("failed to parse install template: %w", err)
 		}
-		if err := t.Execute(&buf, struct{ EtlIP string }{ip}); err != nil {
+		if err := t.Execute(&buf, nil); err != nil {
 			return fmt.Errorf("failed to render install template: %w", err)
 		}
 		sh := buf.String()

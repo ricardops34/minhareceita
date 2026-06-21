@@ -72,11 +72,9 @@ done
 
 echo "==> Configuring remote access..."
 sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /etc/postgresql/18/main/postgresql.conf
-sudo sed -i "/^host\s\+all\s\+etl\s\+127\.0\.0\.1/!{/^host\s\+all\s\+etl/d}" /etc/postgresql/18/main/pg_hba.conf
-if ! grep -q "^host\s\+all\s\+etl\s\+127\.0\.0\.1" /etc/postgresql/18/main/pg_hba.conf; then
-	echo "host all etl 127.0.0.1/32 scram-sha-256" | sudo tee -a /etc/postgresql/18/main/pg_hba.conf
+if ! grep -q "^host\s\+all\s\+etl\s" /etc/postgresql/18/main/pg_hba.conf; then
+	echo "host all etl 0.0.0.0/0 scram-sha-256" | sudo tee -a /etc/postgresql/18/main/pg_hba.conf
 fi
-echo "host all etl {{ .EtlIP }}/32 scram-sha-256" | sudo tee -a /etc/postgresql/18/main/pg_hba.conf
 if ! grep -q "^host\s\+all\s\+web\s" /etc/postgresql/18/main/pg_hba.conf; then
 	echo "host all web 0.0.0.0/0 scram-sha-256" | sudo tee -a /etc/postgresql/18/main/pg_hba.conf
 fi
