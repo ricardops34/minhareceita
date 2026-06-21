@@ -288,10 +288,8 @@ func (m *MongoDB) Search(ctx context.Context, q *Query) ([]byte, error) {
 	case 0:
 		// nenhum grupo $or, nada a fazer
 	case 1:
-		// um único grupo pode ir direto na raiz do filtro
 		f["$or"] = ors[0]["$or"]
 	default:
-		// múltiplos grupos $or devem valer todos juntos (E lógico)
 		f["$and"] = ors
 	}
 	if q.Cursor != nil {
