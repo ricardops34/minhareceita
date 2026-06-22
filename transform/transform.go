@@ -51,7 +51,7 @@ var extraIndexes = [...]string{
 // match this ordering
 //
 // The same logic was used to other unmatched country codes:
-var extraCounties = map[int]string{
+var extraCountries = map[int]string{
 	15:  "Aland, Ilhas",
 	150: "Canal, Ilhas do (Guernsey)",
 	151: "Canárias, Ilhas",
@@ -202,7 +202,7 @@ func transform(dir string, db database, batch int, privacy bool, ibgeMunicipalit
 			return fmt.Errorf("unknown source kind %d for %s", src.kind, src.prefix)
 		})
 	}
-	for k, v := range extraCounties {
+	for k, v := range extraCountries {
 		g.Go(func() error {
 			return kv.put(srcs["pai"], fmt.Sprintf("%d", k), []string{v})
 		})

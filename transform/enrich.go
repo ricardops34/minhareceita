@@ -161,7 +161,7 @@ func partners(c *company.Company, log *slog.Logger, srcs map[string]*source, kv 
 		if err != nil {
 			return fmt.Errorf("could not parse CodigoQualificacaoSocio for %s: %w", c.CNPJ, err)
 		}
-		p.QualificaoSocio, err = stringFromKV(srcs, kv, "qua", row[3], 0)
+		p.QualificacaoSocio, err = stringFromKV(srcs, kv, "qua", row[3], 0)
 		if err != nil {
 			return fmt.Errorf("could not parse QualificaoSocio for %s: %w", c.CNPJ, err)
 		}

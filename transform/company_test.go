@@ -249,8 +249,8 @@ func TestNewCompany(t *testing.T) {
 	if *got.QuadroSocietario[0].CodigoQualificacaoSocio != 10 {
 		t.Errorf("expected partner qualification code to be 10, got %d", *got.QuadroSocietario[0].CodigoQualificacaoSocio)
 	}
-	if *got.QuadroSocietario[0].QualificaoSocio != "Diretor" {
-		t.Errorf("expected partner qualification to be Diretor, got %s", *got.QuadroSocietario[0].QualificaoSocio)
+	if *got.QuadroSocietario[0].QualificacaoSocio != "Diretor" {
+		t.Errorf("expected partner qualification to be Diretor, got %s", *got.QuadroSocietario[0].QualificacaoSocio)
 	}
 	if *got.QuadroSocietario[0].CodigoFaixaEtaria != 6 {
 		t.Errorf("expected partner age range code to be 6, got %d", *got.QuadroSocietario[0].CodigoFaixaEtaria)
