@@ -104,7 +104,7 @@ type Partner struct {
 	NomeSocio                            string  `json:"nome_socio" bson:"nome_socio"`
 	CNPJCPFDoSocio                       string  `json:"cnpj_cpf_do_socio" bson:"cnpj_cpf_do_socio"`
 	CodigoQualificacaoSocio              *int    `json:"codigo_qualificacao_socio" bson:"codigo_qualificacao_socio"`
-	QualificacaoSocio                      *string `json:"qualificacao_socio" bson:"qualificacao_socio"`
+	QualificacaoSocio                    *string `json:"qualificacao_socio" bson:"qualificacao_socio"`
 	DataEntradaSociedade                 *Date   `json:"data_entrada_sociedade" bson:"data_entrada_sociedade"`
 	CodigoPais                           *int    `json:"codigo_pais" bson:"codigo_pais"`
 	Pais                                 *string `json:"pais" bson:"pais"`
