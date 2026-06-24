@@ -60,6 +60,29 @@ Gere as imagens dos containers com:
 $ docker compose build
 ```
 
+## Imagem Docker
+
+O `Dockerfile` define duas imagens a partir do mesmo arquivo: uma para a aplicação principal (API web, ETL, etc.) e outra para a API do grafo. Para escolher qual imagem construir, utilize a opção `--target` do `docker build`.
+
+Baixe a imagem pronta com:
+
+```console
+$ docker pull atcr.io/cuducos.me/minha-receita:main
+```
+
+Ou construa localmente a imagem principal:
+
+```console
+$ docker build --target main -t minha-receita .
+$ docker run -e DATABASE_URL=$DATABASE_URL -p 8000:8000 minha-receita
+```
+
+A imagem do grafo precisa do banco de dados de grafos gerado localmente. Utilize o argumento `GRAPH_PATH` para indicar o caminho do arquivo do grafo durante a construção da imagem:
+
+```console
+$ docker build --target graph --build-arg GRAPH_PATH=./graph.db -t minha-receita-graph .
+```
+
 ## Execução e configurações
 
 Várias configurações podem ser passadas para a CLI, e elas estão documentadas no `--help` de cada comando da aplicação.

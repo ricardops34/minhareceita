@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"encoding/csv"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"path/filepath"
@@ -81,22 +83,20 @@ func (e *ExtraIndex) NestedPath() string {
 
 // PostgreSQL database interface.
 type PostgreSQL struct {
-	pool              *pgxpool.Pool
-	uri               string
-	schema            string
-	getCompanyQuery   string
-	getNeighborsQuery string
-	metaReadQuery     string
-	CompanyTableName  string
-	GraphTableName    string
-	MetaTableName     string
-	CursorFieldName   string
-	IDFieldName       string
-	JSONFieldName     string
-	KeyFieldName      string
-	ValueFieldName    string
-	ExtraIndexes      []ExtraIndex
-	Logged            bool
+	pool             *pgxpool.Pool
+	uri              string
+	schema           string
+	getCompanyQuery  string
+	metaReadQuery    string
+	CompanyTableName string
+	MetaTableName    string
+	CursorFieldName  string
+	IDFieldName      string
+	JSONFieldName    string
+	KeyFieldName     string
+	ValueFieldName   string
+	ExtraIndexes     []ExtraIndex
+	Logged           bool
 }
 
 func (p *PostgreSQL) renderTemplate(key string) (string, error) {
@@ -120,11 +120,6 @@ func (p *PostgreSQL) Close() { p.pool.Close() }
 // CompanyTableFullName is the name of the schame and table in dot-notation.
 func (p *PostgreSQL) CompanyTableFullName() string {
 	return fmt.Sprintf("%s.%s", p.schema, p.CompanyTableName)
-}
-
-// GraphTableFullName is the name of the schema and table in dot-notation.
-func (p *PostgreSQL) GraphTableFullName() string {
-	return fmt.Sprintf("%s.%s", p.schema, p.GraphTableName)
 }
 
 // MetaTableFullName is the name of the schame and table in dot-notation.
@@ -436,7 +431,6 @@ func NewPostgreSQL(a *Args) (PostgreSQL, error) {
 		uri:              a.URI,
 		schema:           a.PostgresSchema,
 		CompanyTableName: companyTableName,
-		GraphTableName:   graphTableName,
 		MetaTableName:    metaTableName,
 		CursorFieldName:  cursorFieldName,
 		IDFieldName:      idFieldName,
@@ -448,10 +442,6 @@ func NewPostgreSQL(a *Args) (PostgreSQL, error) {
 	p.getCompanyQuery, err = p.renderTemplate("get")
 	if err != nil {
 		return PostgreSQL{}, fmt.Errorf("error rendering get template: %w", err)
-	}
-	p.getNeighborsQuery, err = p.renderTemplate("get_neighbors")
-	if err != nil {
-		return PostgreSQL{}, fmt.Errorf("error rendering get_neighbors template: %w", err)
 	}
 	p.metaReadQuery, err = p.renderTemplate("meta_read")
 	if err != nil {
@@ -466,28 +456,76 @@ func NewPostgreSQL(a *Args) (PostgreSQL, error) {
 	return p, nil
 }
 
-// CreateGraphTable creates the graph table.
-func (p *PostgreSQL) CreateGraphTable() error {
-	slog.Info("Creating graph table")
-	s, err := p.renderTemplate("graph")
+// StreamRelationships streams all relationships directly from the main table
+// using encoding/csv.
+func (p *PostgreSQL) StreamRelationships(ctx context.Context, callback func(Relationship) error) error {
+	sql, err := p.renderTemplate("stream_relationships")
 	if err != nil {
-		return fmt.Errorf("error rendering graph template: %w", err)
+		return fmt.Errorf("error rendering stream_relationships template: %w", err)
 	}
-	if _, err := p.pool.Exec(context.Background(), s); err != nil {
-		return fmt.Errorf("error creating graph table with: %s\n%w", s, err)
+
+	pool, err := p.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("error acquiring connection from pool: %w", err)
 	}
+	defer pool.Release()
+
+	conn := pool.Conn().PgConn()
+	buf, pw := io.Pipe()
+
+	go func() {
+		_, err := conn.CopyTo(ctx, pw, sql)
+		if err != nil {
+			if closeErr := pw.CloseWithError(err); closeErr != nil {
+				slog.Warn("could not close pipe writer with error", "error", closeErr)
+			}
+			return
+		}
+		if closeErr := pw.Close(); closeErr != nil {
+			slog.Warn("could not close pipe writer", "error", closeErr)
+		}
+	}()
+
+	r := csv.NewReader(buf)
+	for {
+		rec, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("error parsing relationship CSV stream: %w", err)
+		}
+		if len(rec) < 6 {
+			continue
+		}
+		t, _ := strconv.Atoi(rec[5])
+		rel := Relationship{
+			CompanyID:   rec[0],
+			CompanyName: rec[1],
+			PartnerID:   rec[2],
+			PartnerName: rec[3],
+			PartnerCPF:  rec[4],
+			PartnerType: t,
+		}
+		if err := callback(rel); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
-// GetRelated returns the adjacent nodes of a node in the graph.
-func (p *PostgreSQL) GetRelated(ctx context.Context, id string) ([]GraphEdge, error) {
-	rows, err := p.pool.Query(ctx, p.getNeighborsQuery, id)
+// RelationshipCount returns the count of relationships in the graph (items in qsa lists).
+func (p *PostgreSQL) RelationshipCount(ctx context.Context) (int64, error) {
+	sql, err := p.renderTemplate("relationship_count")
 	if err != nil {
-		return nil, fmt.Errorf("error looking for neighbors of %s: %w", id, err)
+		return 0, fmt.Errorf("error rendering relationship_count template: %w", err)
 	}
-	rs, err := pgx.CollectRows(rows, pgx.RowToStructByPos[GraphEdge])
+
+	var n int64
+	err = p.pool.QueryRow(ctx, sql).Scan(&n)
 	if err != nil {
-		return nil, fmt.Errorf("error reading neighbors of %s: %w", id, err)
+		return 0, fmt.Errorf("error querying relationship count: %w", err)
 	}
-	return rs, nil
+	return n, nil
 }

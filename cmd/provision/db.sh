@@ -33,7 +33,7 @@ for i in 1 2 3; do
 	fi
 	sleep 10
 done
-sudo apt-get -o DPkg::Lock::Timeout=120 install -y -qq curl ca-certificates gnupg lsb-release
+sudo apt-get -o DPkg::Lock::Timeout=120 install -y -qq ca-certificates curl gnupg lsb-release rsync
 
 echo "==> Adding PostgreSQL APT repository..."
 if [ ! -f /usr/share/keyrings/postgresql.gpg ]; then
@@ -83,5 +83,20 @@ if ! grep -q "^host\\s\\+all\\s\\+web\\s" /etc/postgresql/18/main/pg_hba.conf; t
 	echo "host all web 0.0.0.0/0 scram-sha-256" | sudo tee -a /etc/postgresql/18/main/pg_hba.conf >/dev/null
 fi
 sudo systemctl restart postgresql 2>/dev/null || sudo pg_ctlcluster 18 main restart
+
+echo "==> Configuring UFW firewall..."
+if ! command -v ufw >/dev/null 2>&1; then
+	sudo apt-get -o DPkg::Lock::Timeout=120 install -y -qq ufw
+fi
+ssh_port=$(sudo grep -E -i "^Port [0-9]+" /etc/ssh/sshd_config | awk '{print $2}' | head -n 1)
+if [ -z "$ssh_port" ]; then
+	ssh_port="22"
+fi
+echo "Allowing SSH on port $ssh_port..."
+sudo ufw allow "$ssh_port"/tcp
+echo "Allowing PostgreSQL on port 5432..."
+sudo ufw allow 5432/tcp
+echo "Enabling UFW..."
+sudo ufw --force enable
 
 echo "==> PostgreSQL 18 installed and ready."

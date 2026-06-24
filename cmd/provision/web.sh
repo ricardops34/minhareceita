@@ -49,4 +49,20 @@ echo "==> Ensuring Docker is running..."
 sudo systemctl start docker || true
 sudo systemctl enable docker || true
 
+echo "==> Configuring UFW firewall..."
+if ! command -v ufw >/dev/null 2>&1; then
+	sudo apt-get -o DPkg::Lock::Timeout=120 install -y -qq ufw
+fi
+ssh_port=$(sudo grep -E -i "^Port [0-9]+" /etc/ssh/sshd_config | awk '{print $2}' | head -n 1)
+if [ -z "$ssh_port" ]; then
+	ssh_port="22"
+fi
+echo "Allowing SSH on port $ssh_port..."
+sudo ufw allow "$ssh_port"/tcp
+echo "Allowing HTTP (port 80) and HTTPS (port 443)..."
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+echo "Enabling UFW..."
+sudo ufw --force enable
+
 echo "==> Docker installed and running."

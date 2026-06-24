@@ -2,10 +2,7 @@ app = 'minha-receita-graph'
 primary_region = 'ams'
 
 [build]
-  image = 'atcr.io/cuducos.me/minha-receita:latest'
-
-[experimental]
-  cmd = ["graph", "--skip-create"]
+  image = 'registry.fly.io/minha-receita-graph:202606.1'
 
 [env]
   PORT = '8888'
@@ -27,4 +24,4 @@ primary_region = 'ams'
   path = "/healthz"
 
 [[vm]]
-  size = 'shared-cpu-1x'
+  size = 'shared-cpu-2x'

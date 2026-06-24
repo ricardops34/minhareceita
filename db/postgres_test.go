@@ -165,7 +165,7 @@ func TestPostgresAllCompanies(t *testing.T) {
 	}
 }
 
-func TestPostgresGetNeighbors(t *testing.T) {
+func TestPostgresStreamRelationships(t *testing.T) {
 	id := "33683111000280"
 	b, err := os.ReadFile(filepath.Join("..", "testdata", "response.json"))
 	if err != nil {
@@ -187,37 +187,40 @@ func TestPostgresGetNeighbors(t *testing.T) {
 		pg.Close()
 	}()
 
-	if err := pg.CreateGraphTable(); err != nil {
-		t.Errorf("expected no error creating graph table, got %s", err)
+	ctx := context.Background()
+
+	n, err := pg.RelationshipCount(ctx)
+	if err != nil {
+		t.Fatalf("expected no error getting relationship count, got %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 relationship, got %d", n)
 	}
 
-	var ns []GraphEdge
-	t.Run("from company perspective", func(t *testing.T) {
-		var err error
-		ns, err = pg.GetRelated(context.Background(), id)
-		if err != nil {
-			t.Errorf("expected no error getting relations, got %s", err)
-		}
-		if len(ns) == 0 {
-			t.Error("expected at least one relation for the company")
-		}
+	var rels []Relationship
+	err = pg.StreamRelationships(ctx, func(r Relationship) error {
+		rels = append(rels, r)
+		return nil
 	})
+	if err != nil {
+		t.Fatalf("expected no error streaming relationships, got %v", err)
+	}
 
-	t.Run("from partner perspective", func(t *testing.T) {
-		p := ns[0].PartnerID
-		ns2, err := pg.GetRelated(context.Background(), p)
-		if err != nil {
-			t.Errorf("expected no error getting relations for partner, got %s", err)
-		}
-		ok := false
-		for _, n := range ns2 {
-			if n.CompanyID == id {
-				ok = true
-				break
-			}
-		}
-		if !ok {
-			t.Errorf("expected to find company %s as a relation of partner %s", id, p)
-		}
-	})
+	if len(rels) != 1 {
+		t.Fatalf("expected 1 streamed relationship, got %d", len(rels))
+	}
+
+	rel := rels[0]
+	if rel.CompanyID != id {
+		t.Errorf("expected CompanyID to be %s, got %s", id, rel.CompanyID)
+	}
+	if rel.CompanyName != "OPEN KNOWLEDGE BRASIL" {
+		t.Errorf("expected CompanyName to be 'OPEN KNOWLEDGE BRASIL', got %s", rel.CompanyName)
+	}
+	if rel.PartnerName != "HAYDEE SVAB" {
+		t.Errorf("expected PartnerName to be 'HAYDEE SVAB', got %s", rel.PartnerName)
+	}
+	if rel.PartnerCPF != "***112108**" {
+		t.Errorf("expected PartnerCPF to be '***112108**', got %s", rel.PartnerCPF)
+	}
 }

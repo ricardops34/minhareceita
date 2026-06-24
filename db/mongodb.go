@@ -401,18 +401,10 @@ func (m *MongoDB) AllCompanies(ctx context.Context, cursor *string, limit uint32
 	return ids, &cur, nil
 }
 
-// CreateGraphTable creates the graph collection.
-func (m *MongoDB) CreateGraphTable() error {
-	ns, err := m.db.ListCollectionNames(context.Background(), bson.M{"name": graphTableName})
-	if err != nil {
-		return fmt.Errorf("error listing collections: %w", err)
-	}
-	if len(ns) > 0 {
-		return nil
-	}
-	slog.Info("Creating", "collection", graphTableName)
+// StreamRelationships streams all relationships directly from the main company collection (cnpj) using aggregation.
+func (m *MongoDB) StreamRelationships(ctx context.Context, callback func(Relationship) error) error {
 	coll := m.db.Collection(companyTableName)
-	pipeline := mongo.Pipeline{
+	p := mongo.Pipeline{
 		{{Key: "$unwind", Value: "$json.qsa"}},
 		{{Key: "$project", Value: bson.D{
 			{Key: "_id", Value: 0},
@@ -427,57 +419,68 @@ func (m *MongoDB) CreateGraphTable() error {
 			{Key: "partner_cnpf", Value: "$json.qsa.cnpj_cpf_do_socio"},
 			{Key: "partner_type", Value: "$json.qsa.identificador_de_socio"},
 		}}},
-		{{Key: "$merge", Value: bson.D{
-			{Key: "into", Value: graphTableName},
-			{Key: "whenMatched", Value: "replace"},
-		}}},
 	}
-	_, err = coll.Aggregate(context.Background(), pipeline)
+	cur, err := coll.Aggregate(ctx, p)
 	if err != nil {
-		return fmt.Errorf("error creating graph collection: %w", err)
-	}
-
-	g := m.db.Collection(graphTableName)
-	idxs := []mongo.IndexModel{
-		{Keys: bson.D{{Key: "company_id", Value: 1}}},
-		{Keys: bson.D{{Key: "partner_id", Value: 1}}},
-	}
-	_, err = g.Indexes().CreateMany(context.Background(), idxs)
-	if err != nil {
-		return fmt.Errorf("error creating indexes for %s: %w", graphTableName, err)
-	}
-	return nil
-}
-
-// GetRelated returns the adjacent nodes of a node in the graph.
-func (m *MongoDB) GetRelated(ctx context.Context, id string) ([]GraphEdge, error) {
-	coll := m.db.Collection(graphTableName)
-	filter := bson.M{
-		"$or": []bson.M{
-			{"company_id": id},
-			{"partner_id": id},
-		},
-	}
-	cur, err := coll.Find(ctx, filter)
-	if err != nil {
-		return nil, fmt.Errorf("error looking for neighbors of %s: %w", id, err)
+		return fmt.Errorf("error querying relationship aggregation: %w", err)
 	}
 	defer func() {
 		if err := cur.Close(ctx); err != nil {
-			slog.Warn("could not close database cursor", "error", err)
+			slog.Warn("could not close cursor", "error", err)
 		}
 	}()
 
-	var edges []GraphEdge
 	for cur.Next(ctx) {
-		var e GraphEdge
-		if err := cur.Decode(&e); err != nil {
-			return nil, fmt.Errorf("error decoding neighbor record: %w", err)
+		var rel bson.M
+		if err := cur.Decode(&rel); err != nil {
+			return fmt.Errorf("error decoding relationship: %w", err)
 		}
-		edges = append(edges, e)
+		t, _ := rel["partner_type"].(int32)
+		r := Relationship{
+			CompanyID:   fmt.Sprintf("%v", rel["company_id"]),
+			CompanyName: fmt.Sprintf("%v", rel["company_name"]),
+			PartnerID:   fmt.Sprintf("%v", rel["partner_id"]),
+			PartnerName: fmt.Sprintf("%v", rel["partner_name"]),
+			PartnerCPF:  fmt.Sprintf("%v", rel["partner_cnpf"]),
+			PartnerType: int(t),
+		}
+		if err := callback(r); err != nil {
+			return err
+		}
 	}
-	if err := cur.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating through neighbors: %w", err)
+	return cur.Err()
+}
+
+// RelationshipCount returns the count of relationships in the graph (items in qsa lists).
+func (m *MongoDB) RelationshipCount(ctx context.Context) (int64, error) {
+	coll := m.db.Collection(companyTableName)
+	p := mongo.Pipeline{
+		{{Key: "$project", Value: bson.D{
+			{Key: "qsa_size", Value: bson.D{{Key: "$size", Value: bson.D{{Key: "$ifNull", Value: bson.A{"$json.qsa", bson.A{}}}}}}},
+		}}},
+		{{Key: "$group", Value: bson.D{
+			{Key: "_id", Value: nil},
+			{Key: "total", Value: bson.D{{Key: "$sum", Value: "$qsa_size"}}},
+		}}},
 	}
-	return edges, nil
+	cur, err := coll.Aggregate(ctx, p)
+	if err != nil {
+		return 0, fmt.Errorf("error executing count aggregation: %w", err)
+	}
+	defer func() {
+		if err := cur.Close(ctx); err != nil {
+			slog.Warn("could not close cursor", "error", err)
+		}
+	}()
+
+	if cur.Next(ctx) {
+		var res struct {
+			Total int64 `bson:"total"`
+		}
+		if err := cur.Decode(&res); err != nil {
+			return 0, fmt.Errorf("error decoding count result: %w", err)
+		}
+		return res.Total, nil
+	}
+	return 0, nil
 }

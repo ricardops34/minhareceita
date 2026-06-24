@@ -30,8 +30,8 @@ type database interface {
 	AllCompanies(context.Context, *string, uint32) ([]string, *string, error)
 
 	// graph
-	CreateGraphTable() error
-	GetRelated(context.Context, string) ([]db.GraphEdge, error)
+	StreamRelationships(context.Context, func(db.Relationship) error) error
+	RelationshipCount(context.Context) (int64, error)
 }
 
 func loadDatabase(args *db.Args) (database, error) {
