@@ -15,6 +15,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/ristretto/v2"
 	"github.com/klauspost/compress/gzhttp"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"tangled.org/cuducos.me/go-cnpj"
 )
 
@@ -322,8 +323,10 @@ func (s *Server) findShortestPath(src, dst string) ([]db.Relationship, error) {
 		adj := func(id string) ([]string, error) {
 			if s.cache != nil {
 				if v, ok := s.cache.Get(id); ok {
+					cacheHits.Inc()
 					return v, nil
 				}
+				cacheMisses.Inc()
 			}
 
 			var res []string
@@ -407,6 +410,12 @@ func (s *Server) findShortestPath(src, dst string) ([]db.Relationship, error) {
 
 func (s *Server) headersWrapper(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		i := time.Now().UnixMilli()
+		n := "relations"
+		if strings.HasPrefix(r.URL.Path, "/conexao/") {
+			n = "connection"
+		}
+
 		w.Header().Set("Cache-Control", cacheControl)
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
@@ -415,6 +424,7 @@ func (s *Server) headersWrapper(h http.HandlerFunc) http.HandlerFunc {
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
+			registerMetric(n, r.Method, http.StatusOK, i)
 			return
 		}
 		if r.Method != http.MethodGet {
@@ -422,6 +432,7 @@ func (s *Server) headersWrapper(h http.HandlerFunc) http.HandlerFunc {
 			if _, err := io.WriteString(w, `{"message":"Essa URL aceita apenas o método GET."}`); err != nil {
 				slog.Error("failed to write method not allowed response", "error", err)
 			}
+			registerMetric(n, r.Method, http.StatusMethodNotAllowed, i)
 			return
 		}
 		h(w, r)
@@ -429,12 +440,14 @@ func (s *Server) headersWrapper(h http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) RelationsHandler(w http.ResponseWriter, r *http.Request) {
+	i := time.Now().UnixMilli()
 	id := strings.TrimPrefix(r.URL.Path, "/relacoes/")
 	if id == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := io.WriteString(w, `{"message":"Uso: /relacoes/<ID>"}`); err != nil {
 			slog.Error("failed to write relations bad request response", "error", err)
 		}
+		registerMetric("relations", r.Method, http.StatusBadRequest, i)
 		return
 	}
 	if cnpj.IsValid(id) {
@@ -447,12 +460,13 @@ func (s *Server) RelationsHandler(w http.ResponseWriter, r *http.Request) {
 		if _, err := fmt.Fprintf(w, `{"message":"Identificador %s não encontrado ou sem conexões."}`, id); err != nil {
 			slog.Error("failed to write relations not found response", "error", err)
 		}
+		registerMetric("relations", r.Method, http.StatusNotFound, i)
 		return
 	}
 
-	for i := range rels {
-		if rels[i].PartnerType != 2 {
-			rels[i].PartnerCPF = ""
+	for idx := range rels {
+		if rels[idx].PartnerType != 2 {
+			rels[idx].PartnerCPF = ""
 		}
 	}
 
@@ -460,9 +474,11 @@ func (s *Server) RelationsHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(rels); err != nil {
 		slog.Error("failed to encode relations response", "error", err)
 	}
+	registerMetric("relations", r.Method, http.StatusOK, i)
 }
 
 func (s *Server) ConnectionHandler(w http.ResponseWriter, r *http.Request) {
+	i := time.Now().UnixMilli()
 	pth := strings.TrimPrefix(r.URL.Path, "/conexao/")
 	p := strings.Split(pth, "/")
 	if len(p) != 2 {
@@ -470,6 +486,7 @@ func (s *Server) ConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		if _, err := io.WriteString(w, `{"message":"Endpoint /conexao/ exige dois identificadores, ex: /conexao/id1/id2"}`); err != nil {
 			slog.Error("failed to write connection bad request response", "error", err)
 		}
+		registerMetric("connection", r.Method, http.StatusBadRequest, i)
 		return
 	}
 	src, dst := p[0], p[1]
@@ -497,6 +514,7 @@ func (s *Server) ConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		if _, err := fmt.Fprintf(w, `{"message":"Não foi possível calcular a conexão entre %s e %s em 90s."}`, src, dst); err != nil {
 			slog.Error("failed to write connection timeout response", "error", err)
 		}
+		registerMetric("connection", r.Method, http.StatusGatewayTimeout, i)
 		return
 	case err := <-ch:
 		if errors.Is(err, errNoConnection) {
@@ -504,6 +522,7 @@ func (s *Server) ConnectionHandler(w http.ResponseWriter, r *http.Request) {
 			if _, err := fmt.Fprintf(w, `{"message":"Nenhuma conexão encontrada entre %s e %s."}`, src, dst); err != nil {
 				slog.Error("failed to write connection not found response", "error", err)
 			}
+			registerMetric("connection", r.Method, http.StatusNotFound, i)
 			return
 		}
 		if err != nil {
@@ -512,13 +531,14 @@ func (s *Server) ConnectionHandler(w http.ResponseWriter, r *http.Request) {
 			if _, err := fmt.Fprintf(w, `{"message":"Erro ao calcular a conexão entre %s e %s."}`, src, dst); err != nil {
 				slog.Error("failed to write connection error response", "error", err)
 			}
+			registerMetric("connection", r.Method, http.StatusInternalServerError, i)
 			return
 		}
 	}
 
-	for i := range out {
-		if out[i].PartnerType != 2 {
-			out[i].PartnerCPF = ""
+	for idx := range out {
+		if out[idx].PartnerType != 2 {
+			out[idx].PartnerCPF = ""
 		}
 	}
 
@@ -526,25 +546,32 @@ func (s *Server) ConnectionHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(out); err != nil {
 		slog.Error("failed to encode connection response", "error", err)
 	}
+	registerMetric("connection", r.Method, http.StatusOK, i)
 }
 
 func Serve(srv *Server, port string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/relacoes/", srv.headersWrapper(srv.RelationsHandler))
 	mux.HandleFunc("/conexao/", srv.headersWrapper(srv.ConnectionHandler))
+	mux.HandleFunc("/metrics", promhttp.Handler().ServeHTTP)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		i := time.Now().UnixMilli()
 		w.WriteHeader(http.StatusOK)
+		registerMetric("/healthz", r.Method, http.StatusOK, i)
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		i := time.Now().UnixMilli()
 		if r.URL.Path != "/" {
 			w.Header().Set("Content-type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
 			if _, err := fmt.Fprintf(w, `{"message":"Endpoint %s não encontrado. Use /relacoes/<ID> ou /conexao/<ID>/<ID>."}`, r.URL.Path); err != nil {
 				slog.Error("failed to write not found response", "error", err)
 			}
+			registerMetric("root", r.Method, http.StatusNotFound, i)
 			return
 		}
 		http.Redirect(w, r, "https://docs.minhareceita.org", http.StatusFound)
+		registerMetric("root", r.Method, http.StatusFound, i)
 	})
 
 	slog.Info(fmt.Sprintf("Serving standalone graph API at http://0.0.0.0:%s", port))
@@ -552,7 +579,7 @@ func Serve(srv *Server, port string) error {
 		Addr:         ":" + port,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 120 * time.Second,
-		Handler:      gzhttp.GzipHandler(mux),
+		Handler:      bandwidthMiddleware(gzhttp.GzipHandler(mux)),
 	}
 	return server.ListenAndServe()
 }

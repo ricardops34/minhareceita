@@ -3,13 +3,16 @@ package graph
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"codeberg.org/cuducos/minha-receita/db"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func TestAPI(t *testing.T) {
@@ -123,6 +126,58 @@ func TestAPI(t *testing.T) {
 		}
 		if rels[1].CompanyID != "33333333000133" || rels[1].PartnerID != "22222222222" {
 			t.Errorf("unexpected second relationship: %+v", rels[1])
+		}
+	})
+
+	t.Run("Metrics and Middleware", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/relacoes/", srv.headersWrapper(srv.RelationsHandler))
+		mux.Handle("/metrics", promhttp.Handler())
+
+		handler := bandwidthMiddleware(mux)
+
+		req := httptest.NewRequest("GET", "/relacoes/22222222222", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		res := w.Result()
+		defer func() {
+			if err := res.Body.Close(); err != nil {
+				t.Logf("failed to close response body: %v", err)
+			}
+		}()
+
+		if res.StatusCode != http.StatusOK {
+			t.Errorf("expected 200, got %d", res.StatusCode)
+		}
+
+		// Make a request to /metrics to retrieve them
+		req = httptest.NewRequest("GET", "/metrics", nil)
+		w = httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		res = w.Result()
+		defer func() {
+			if err := res.Body.Close(); err != nil {
+				t.Logf("failed to close response body: %v", err)
+			}
+		}()
+
+		if res.StatusCode != http.StatusOK {
+			t.Errorf("expected 200 for metrics, got %d", res.StatusCode)
+		}
+
+		b, err := io.ReadAll(res.Body)
+		if err != nil {
+			t.Fatalf("failed to read metrics body: %v", err)
+		}
+
+		got := string(b)
+		if !strings.Contains(got, "total_requests") {
+			t.Errorf("expected total_requests metric in response, got:\n%s", got)
+		}
+		if !strings.Contains(got, "request_duration") {
+			t.Errorf("expected request_duration metric in response, got:\n%s", got)
 		}
 	})
 }
