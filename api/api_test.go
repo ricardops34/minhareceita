@@ -188,6 +188,11 @@ func TestHealthHandler(t *testing.T) {
 		if strings.TrimSpace(resp.Body.String()) != c.content {
 			t.Errorf("\nExpected HTTP contents to be %s, got %s", c.content, resp.Body.String())
 		}
+		if c.content != "" {
+			if ct := resp.Result().Header.Get("Content-type"); ct != "application/json" {
+				t.Errorf("Expected content-type application/json, but got %s", ct)
+			}
+		}
 	}
 }
 
@@ -216,6 +221,11 @@ func TestUpdatedHandler(t *testing.T) {
 		}
 		if strings.TrimSpace(resp.Body.String()) != c.content {
 			t.Errorf("\nExpected HTTP contents to be %s, got %s", c.content, resp.Body.String())
+		}
+		if c.content != "" {
+			if ct := resp.Result().Header.Get("Content-type"); ct != "application/json" {
+				t.Errorf("Expected content-type application/json, but got %s", ct)
+			}
 		}
 	}
 }

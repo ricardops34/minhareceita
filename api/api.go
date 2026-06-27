@@ -46,9 +46,11 @@ type api struct {
 // messageResponse takes a text message and a HTTP status, wraps the message into a
 // JSON output and writes it together with the proper headers to a response.
 func (app *api) messageResponse(w http.ResponseWriter, s int, m string) {
-	w.WriteHeader(s)
 	if m != "" {
 		w.Header().Set("Content-type", "application/json")
+	}
+	w.WriteHeader(s)
+	if m != "" {
 		if _, err := io.WriteString(w, fmt.Sprintf(`{"message":"%s"}`, m)); err != nil {
 			slog.Error("could not write response message for", "status code", s, "message", m, "error", err)
 		}
