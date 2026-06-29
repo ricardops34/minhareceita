@@ -5,6 +5,7 @@ import (
 	"context"
 	"embed"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -191,6 +192,9 @@ func (p *PostgreSQL) GetCompany(ctx context.Context, id string) ([]byte, error) 
 	}
 	j, err := pgx.CollectOneRow(rows, pgx.RowTo[[]byte])
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("cnpj %s: %w", id, ErrCompanyNotFound)
+		}
 		return nil, fmt.Errorf("error reading cnpj %s: %w", id, err)
 	}
 	return j, nil

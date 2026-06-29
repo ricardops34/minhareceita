@@ -1,5 +1,9 @@
 package db
 
+import "errors"
+
+var ErrCompanyNotFound = errors.New("company not found")
+
 const (
 	// SQLBatchSize determines the size of the batches used to create the
 	// JSON data in SQL-based databases.

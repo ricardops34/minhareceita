@@ -20,7 +20,7 @@ type mockDatabase struct{}
 func (mockDatabase) GetCompany(ctx context.Context, n string) ([]byte, error) {
 	n = cnpj.Unmask(n)
 	if n != "19131243000197" {
-		return nil, errors.New("Company not found")
+		return nil, fmt.Errorf("cnpj %s: %w", n, db.ErrCompanyNotFound)
 	}
 
 	b, err := os.ReadFile(filepath.Join("..", "testdata", "response.json"))
@@ -146,6 +146,32 @@ func TestCompanyHandler(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+type transientErrorDatabase struct{ mockDatabase }
+
+func (transientErrorDatabase) GetCompany(ctx context.Context, n string) ([]byte, error) {
+	return nil, errors.New("connection refused")
+}
+
+func TestSingleCompanyTransientError(t *testing.T) {
+	t.Parallel()
+	req, err := http.NewRequest(http.MethodGet, "/19.131.243/0001-97", nil)
+	if err != nil {
+		t.Fatal("Expected an HTTP request, but got an error.")
+	}
+
+	app := api{db: &transientErrorDatabase{}}
+	resp := httptest.NewRecorder()
+	handler := http.HandlerFunc(app.companyHandler)
+	handler.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected a transient error to return %v, but got %v", http.StatusServiceUnavailable, resp.Code)
+	}
+	if cc := resp.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("Expected Cache-Control to be no-store, but got %q", cc)
 	}
 }
 

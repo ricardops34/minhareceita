@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -212,8 +213,8 @@ func (m *MongoDB) GetCompany(ctx context.Context, id string) ([]byte, error) {
 	var r bson.Raw
 	err := coll.FindOne(ctx, bson.M{idFieldName: id}).Decode(&r)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, fmt.Errorf("no document found for CNPJ %s", id)
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, fmt.Errorf("cnpj %s: %w", id, ErrCompanyNotFound)
 		}
 		return nil, fmt.Errorf("error querying CNPJ %s: %w", id, err)
 	}
