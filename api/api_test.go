@@ -175,6 +175,97 @@ func TestSingleCompanyTransientError(t *testing.T) {
 	}
 }
 
+type countingNotFoundDatabase struct {
+	mockDatabase
+	calls int
+}
+
+func (d *countingNotFoundDatabase) GetCompany(ctx context.Context, n string) ([]byte, error) {
+	d.calls++
+	return nil, fmt.Errorf("cnpj %s: %w", cnpj.Unmask(n), db.ErrCompanyNotFound)
+}
+
+func TestSingleCompanyNotFoundIsCached(t *testing.T) {
+	t.Parallel()
+	c, err := newCache(minCacheSize)
+	if err != nil {
+		t.Fatalf("could not create cache: %v", err)
+	}
+	mdb := &countingNotFoundDatabase{}
+	app := api{db: mdb, cache: c}
+
+	do := func() *httptest.ResponseRecorder {
+		req, err := http.NewRequest(http.MethodGet, "/00.000.000/0001-91", nil)
+		if err != nil {
+			t.Fatal("Expected an HTTP request, but got an error.")
+		}
+		resp := httptest.NewRecorder()
+		http.HandlerFunc(app.companyHandler).ServeHTTP(resp, req)
+		return resp
+	}
+
+	first := do()
+	if first.Code != http.StatusNotFound {
+		t.Errorf("Expected first request to return %v, but got %v", http.StatusNotFound, first.Code)
+	}
+	c.r.Wait()
+
+	second := do()
+	if second.Code != http.StatusNotFound {
+		t.Errorf("Expected cached request to return %v, but got %v", http.StatusNotFound, second.Code)
+	}
+	if body := strings.TrimSpace(second.Body.String()); body != `{"message":"CNPJ 00.000.000/0001-91 não encontrado."}` {
+		t.Errorf("unexpected cached 404 body: %s", body)
+	}
+	if mdb.calls != 1 {
+		t.Errorf("Expected the database to be queried once (second request served from cache), but it was queried %d times", mdb.calls)
+	}
+}
+
+type countingTransientDatabase struct {
+	mockDatabase
+	calls int
+}
+
+func (d *countingTransientDatabase) GetCompany(ctx context.Context, n string) ([]byte, error) {
+	d.calls++
+	return nil, errors.New("connection refused")
+}
+
+func TestSingleCompanyTransientErrorIsNotCached(t *testing.T) {
+	t.Parallel()
+	c, err := newCache(minCacheSize)
+	if err != nil {
+		t.Fatalf("could not create cache: %v", err)
+	}
+	mdb := &countingTransientDatabase{}
+	app := api{db: mdb, cache: c}
+
+	do := func() *httptest.ResponseRecorder {
+		req, err := http.NewRequest(http.MethodGet, "/19.131.243/0001-97", nil)
+		if err != nil {
+			t.Fatal("Expected an HTTP request, but got an error.")
+		}
+		resp := httptest.NewRecorder()
+		http.HandlerFunc(app.companyHandler).ServeHTTP(resp, req)
+		return resp
+	}
+
+	first := do()
+	if first.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected first request to return %v, but got %v", http.StatusServiceUnavailable, first.Code)
+	}
+	c.r.Wait()
+
+	second := do()
+	if second.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected second request to still return %v (not cached), but got %v", http.StatusServiceUnavailable, second.Code)
+	}
+	if mdb.calls != 2 {
+		t.Errorf("Expected the database to be queried on every request (transient error not cached), but it was queried %d times", mdb.calls)
+	}
+}
+
 func TestHealthHandler(t *testing.T) {
 	cases := []struct {
 		method  string

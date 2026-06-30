@@ -42,5 +42,9 @@ func (c *cache) get(key string) ([]byte, bool) {
 }
 
 func (c *cache) set(key string, value []byte) {
-	c.r.Set(key, value, int64(len(value)))
+	cost := int64(len(value))
+	if cost == 0 {
+		cost = 1
+	}
+	c.r.Set(key, value, cost)
 }
