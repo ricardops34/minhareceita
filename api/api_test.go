@@ -131,8 +131,8 @@ func TestCompanyHandler(t *testing.T) {
 
 			app := api{db: &mockDatabase{}}
 			resp := httptest.NewRecorder()
-			handler := http.HandlerFunc(app.companyHandler)
-			handler.ServeHTTP(resp, req)
+			h := http.HandlerFunc(app.companyHandler)
+			h.ServeHTTP(resp, req)
 
 			if resp.Code != c.status {
 				t.Errorf("Expected %s to return %v, but got %v", c.method, c.status, resp.Code)
@@ -164,8 +164,8 @@ func TestSingleCompanyTransientError(t *testing.T) {
 
 	app := api{db: &transientErrorDatabase{}}
 	resp := httptest.NewRecorder()
-	handler := http.HandlerFunc(app.companyHandler)
-	handler.ServeHTTP(resp, req)
+	h := http.HandlerFunc(app.companyHandler)
+	h.ServeHTTP(resp, req)
 
 	if resp.Code != http.StatusServiceUnavailable {
 		t.Errorf("Expected a transient error to return %v, but got %v", http.StatusServiceUnavailable, resp.Code)
@@ -296,8 +296,8 @@ func TestHealthHandler(t *testing.T) {
 		}
 		app := api{db: &mockDatabase{}}
 		resp := httptest.NewRecorder()
-		handler := http.HandlerFunc(app.healthHandler)
-		handler.ServeHTTP(resp, req)
+		h := http.HandlerFunc(app.healthHandler)
+		h.ServeHTTP(resp, req)
 
 		if resp.Code != c.status {
 			t.Errorf("Expected %s /healthz to return %v, but got %v", c.method, c.status, resp.Code)
@@ -330,8 +330,8 @@ func TestUpdatedHandler(t *testing.T) {
 			t.Fatal("Expected an HTTP request, but got an error.")
 		}
 		resp := httptest.NewRecorder()
-		handler := http.HandlerFunc(app.updatedHandler)
-		handler.ServeHTTP(resp, req)
+		h := http.HandlerFunc(app.updatedHandler)
+		h.ServeHTTP(resp, req)
 
 		if resp.Code != c.status {
 			t.Errorf("Expected %s /urls to return %v, but got %v", c.method, c.status, resp.Code)
@@ -364,8 +364,8 @@ func TestAllowedHostWrap(t *testing.T) {
 			}
 			resp := httptest.NewRecorder()
 			app := api{db: &mockDatabase{}, host: c.allowedHost}
-			handler := http.HandlerFunc(app.allowedHostWrapper(app.companyHandler))
-			handler.ServeHTTP(resp, req)
+			h := http.HandlerFunc(app.allowedHostWrapper(app.companyHandler))
+			h.ServeHTTP(resp, req)
 			if resp.Code != c.status {
 				t.Errorf("Expected request with allowed host `%s` to return %d, but got %d (request header had `%s`) ", c.allowedHost, c.status, resp.Code, req.Host)
 			}
