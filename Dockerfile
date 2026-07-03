@@ -1,26 +1,15 @@
-FROM golang:1.26-trixie AS build
+ARG GOLANG_VERSION=1.26
+ARG DISTROLESS_TAG=nonroot
+
+FROM golang:${GOLANG_VERSION}-trixie AS build
 ENV GOEXPERIMENT=jsonv2
 WORKDIR /minha-receita
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -o /usr/bin/minha-receita
+RUN CGO_ENABLED=1 go build -o /usr/bin/minha-receita
 
-FROM debian:trixie-slim AS base
-RUN apt-get update && \
-    apt-get upgrade -y \
-        bsdutils \
-        coreutils \
-        libc-bin \
-        libc6 \
-        libsqlite3-0 \
-        libsystemd0 \
-        libudev1 \
-        util-linux && \
-    apt-get install -y --no-install-recommends ca-certificates && \
-    update-ca-certificates && \
-    apt-get autoremove -y && \
-    rm -rf /var/lib/apt/lists/*
+FROM gcr.io/distroless/cc-debian13:${DISTROLESS_TAG} AS base
 COPY --from=build /usr/bin/minha-receita /usr/bin/minha-receita
 ENTRYPOINT ["/usr/bin/minha-receita"]
 
