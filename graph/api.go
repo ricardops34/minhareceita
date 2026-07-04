@@ -343,8 +343,31 @@ func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]db.Re
 			}
 
 			copy(k[4+len(id):], "<-")
-			for it.Seek(k); it.ValidForPrefix(k); it.Next() {
-				res = append(res, string(it.Item().Key()[len(k):]))
+			if len(res) < 16 {
+				for it.Seek(k); it.ValidForPrefix(k); it.Next() {
+					nid := string(it.Item().Key()[len(k):])
+					found := false
+					for _, v := range res {
+						if v == nid {
+							found = true
+							break
+						}
+					}
+					if !found {
+						res = append(res, nid)
+					}
+				}
+			} else {
+				seen := make(map[string]struct{}, len(res))
+				for _, v := range res {
+					seen[v] = struct{}{}
+				}
+				for it.Seek(k); it.ValidForPrefix(k); it.Next() {
+					nid := string(it.Item().Key()[len(k):])
+					if _, ok := seen[nid]; !ok {
+						res = append(res, nid)
+					}
+				}
 			}
 
 			if s.cache != nil {
