@@ -18,7 +18,7 @@ LABEL org.opencontainers.image.description="Sua API de grafos para consulta de i
 LABEL org.opencontainers.image.source="https://codeberg.org/cuducos/minha-receita"
 LABEL org.opencontainers.image.title="Minha Receita - Grafo"
 ARG GRAPH_PATH
-COPY ${GRAPH_PATH} /graph.db
+COPY --chown=65532:65532 ${GRAPH_PATH} /graph.db
 CMD ["graph", "api", "--graph", "/graph.db"]
 
 FROM base AS main
