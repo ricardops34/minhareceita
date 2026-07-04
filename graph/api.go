@@ -194,7 +194,7 @@ func (s *Server) getRelations(id string) ([]db.Relationship, error) {
 
 var errNoConnection = errors.New("no connection found")
 
-func (s *Server) findShortestPath(src, dst string) ([]db.Relationship, error) {
+func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]db.Relationship, error) {
 	if src == dst {
 		return []db.Relationship{}, nil
 	}
@@ -321,6 +321,9 @@ func (s *Server) findShortestPath(src, dst string) ([]db.Relationship, error) {
 		defer it.Close()
 
 		adj := func(id string) ([]string, error) {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			if s.cache != nil {
 				if v, ok := s.cache.Get(id); ok {
 					cacheHits.Inc()
@@ -355,6 +358,9 @@ func (s *Server) findShortestPath(src, dst string) ([]db.Relationship, error) {
 		}
 
 		for len(qsrc) > 0 && len(qdst) > 0 {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			var nqs []*node
 			for _, n := range qsrc {
 				ids, err := adj(n.id)
@@ -377,6 +383,9 @@ func (s *Server) findShortestPath(src, dst string) ([]db.Relationship, error) {
 			}
 			qsrc = nqs
 
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			var nqd []*node
 			for _, n := range qdst {
 				ids, err := adj(n.id)
@@ -504,7 +513,7 @@ func (s *Server) ConnectionHandler(w http.ResponseWriter, r *http.Request) {
 	ch := make(chan error, 1)
 	go func() {
 		var err error
-		out, err = s.findShortestPath(src, dst)
+		out, err = s.findShortestPath(ctx, src, dst)
 		ch <- err
 	}()
 
@@ -517,6 +526,14 @@ func (s *Server) ConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		registerMetric("connection", r.Method, http.StatusGatewayTimeout, i)
 		return
 	case err := <-ch:
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			w.WriteHeader(http.StatusGatewayTimeout)
+			if _, err := fmt.Fprintf(w, `{"message":"Não foi possível calcular a conexão entre %s e %s em 90s."}`, src, dst); err != nil {
+				slog.Error("failed to write connection timeout response", "error", err)
+			}
+			registerMetric("connection", r.Method, http.StatusGatewayTimeout, i)
+			return
+		}
 		if errors.Is(err, errNoConnection) {
 			w.WriteHeader(http.StatusNotFound)
 			if _, err := fmt.Fprintf(w, `{"message":"Nenhuma conexão encontrada entre %s e %s."}`, src, dst); err != nil {

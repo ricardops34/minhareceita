@@ -129,6 +129,25 @@ func TestAPI(t *testing.T) {
 		}
 	})
 
+	t.Run("Connection Handler Cancelled Context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		req := httptest.NewRequest("GET", "/conexao/11111111000111/33333333000133", nil).WithContext(ctx)
+		w := httptest.NewRecorder()
+		srv.ConnectionHandler(w, req)
+
+		res := w.Result()
+		defer func() {
+			if err := res.Body.Close(); err != nil {
+				t.Logf("failed to close response body: %v", err)
+			}
+		}()
+
+		if res.StatusCode != http.StatusGatewayTimeout {
+			t.Errorf("expected 504 Gateway Timeout, got %d", res.StatusCode)
+		}
+	})
+
 	t.Run("Metrics and Middleware", func(t *testing.T) {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/relacoes/", srv.headersWrapper(srv.RelationsHandler))
