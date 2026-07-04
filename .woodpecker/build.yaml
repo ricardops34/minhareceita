@@ -13,6 +13,7 @@ steps:
     settings:
       registry: atcr.io
       repo: cuducos.me/minha-receita
+      dockerfile_target: main
       tags:
         - ${CI_COMMIT_SHA}
         - latest
