@@ -74,8 +74,10 @@ var graphApiCmd = &cobra.Command{
 				graphPath = env
 			}
 		}
-		if port == "8000" && os.Getenv("PORT") != "" {
-			port = os.Getenv("PORT")
+		if !cmd.Flags().Changed("port") {
+			if env := os.Getenv("PORT"); env != "" {
+				port = env
+			}
 		}
 		if !cmd.Flags().Changed("cache") {
 			if v := os.Getenv("GRAPH_CACHE_SIZE"); v != "" {

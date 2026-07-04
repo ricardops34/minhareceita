@@ -38,8 +38,10 @@ var apiCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		args.SetURI(uri)
 		var err error
-		if port == "" {
-			port = os.Getenv("PORT")
+		if !cmd.Flags().Changed("port") {
+			if env := os.Getenv("PORT"); env != "" {
+				port = env
+			}
 		}
 		if port == "" {
 			port = defaultPort
