@@ -36,14 +36,14 @@ var graphCreateCmd = &cobra.Command{
 		ctx := context.Background()
 
 		slog.Info("Querying total relationship count from the main database")
-		count, err := db.RelationshipCount(ctx)
+		t, err := db.RelationshipCount(ctx)
 		if err != nil {
 			return fmt.Errorf("could not get relationship count: %w", err)
 		}
-		slog.Info("Found relationships to process", "count", count)
+		slog.Info("Found relationships to process", "count", t)
 
 		bar := progressbar.NewOptions(
-			int(count),
+			int(t),
 			progressbar.OptionSetDescription("Streaming & building relationships index"),
 			progressbar.OptionShowCount(),
 			progressbar.OptionShowElapsedTimeOnFinish(),
@@ -52,7 +52,7 @@ var graphCreateCmd = &cobra.Command{
 			progressbar.OptionOnCompletion(func() { fmt.Println() }),
 		)
 
-		if err := graph.Create(ctx, db, count, graphPath, bar); err != nil {
+		if err := graph.Create(ctx, db, t, graphPath, bar); err != nil {
 			return fmt.Errorf("error creating graph index: %w", err)
 		}
 

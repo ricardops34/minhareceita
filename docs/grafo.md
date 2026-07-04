@@ -1,6 +1,6 @@
 # Grafo (Experimental)
 
-O comando `graph` é experimental e permite explorar as relações entre quadro societários e pessoas, tanto jurídicas quanto físicas.
+O comando `graph` permite explorar as relações entre quadro societários e pessoas, tanto jurídicas quanto físicas.
 
 !!! info "Funcionalidade experimental"
     Esta é uma funcionalidade experimental e pode sofrer alterações, inclusive ser retirada do ar sem aviso prévio.
@@ -78,7 +78,7 @@ Para consultar as *relações de uma empresa ou de uma pessoa física*, use `GET
 
 A partir de então navegue no grafo com mais requisições para `/relacoes/<id>` para saber em quais outros quadro societários essa pessoa (física ou jurídica) está.
 
-Para descobrir a *menor conexão entre duas pessoas físicas ou jurídicas*, use `GET /conexao/<id1>/<id2>` (limitado a uma distância máxima de 16).
+Para descobrir a *menor conexão entre duas pessoas físicas ou jurídicas*, use `GET /conexao/<id1>/<id2>`. A busca dura no máximo 90 segundos; caso, nesse intervalo, nenhuma conexão seja encontrada, isso não significa que nenhuma conexão é possível.
 
 ??? example "Exemplo de resposta para `GET /conexao/34712359000103/27516314000106`"
     ```json
@@ -113,14 +113,23 @@ Para descobrir a *menor conexão entre duas pessoas físicas ou jurídicas*, use
       }
     ]
     ```
+
 ## Rodando localmente
 
-Para iniciar o servidor de grafo, execute:
+Primeiro, com um banco de dados completo, crie os grafos com:
 
 ```console
-$ minha-receita graph
+$ minha-receita graph create
 ```
 
-Este comando irá:
-1. Criar a tabela ou coleção `graph` no banco de dados baseada nos dados já carregados em `DATABASE_URL` (para pular esta etapa utilize `--skip-create`).
-2. Iniciar um servidor web (por padrão na porta 8000, ou na porta definida pela variável de ambiente `PORT`).
+Na sequência, inicia o servidor da API de grafos:
+
+```console
+$ minha-receita graph api
+```
+
+Para criar a imagem do container:
+
+```console
+$ docker build --target graph --build-arg GRAPH_PATH=./graph.db -t minha-receita-graph .
+```
