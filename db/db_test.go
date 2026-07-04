@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -105,6 +106,9 @@ func TestRetrieve(t *testing.T) {
 				t.Errorf("expected no error getting a company, got %s", err)
 			}
 			assertCompaniesAreEqual(t, got, c)
+			if _, err := db.GetCompany(context.Background(), "00000000000000"); !errors.Is(err, ErrCompanyNotFound) {
+				t.Errorf("expected ErrCompanyNotFound for a missing CNPJ, got %v", err)
+			}
 			if err := db.MetaSave("answer", "42"); err != nil {
 				t.Errorf("expected no error writing to the metadata table, got %s", err)
 			}

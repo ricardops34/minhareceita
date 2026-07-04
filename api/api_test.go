@@ -15,12 +15,13 @@ import (
 	"tangled.org/cuducos.me/go-cnpj"
 )
 
-type mockDatabase struct{}
+type mockDatabase struct{ calls int }
 
-func (mockDatabase) GetCompany(ctx context.Context, n string) ([]byte, error) {
+func (d *mockDatabase) GetCompany(ctx context.Context, n string) ([]byte, error) {
+	d.calls++
 	n = cnpj.Unmask(n)
 	if n != "19131243000197" {
-		return nil, errors.New("Company not found")
+		return nil, fmt.Errorf("cnpj %s: %w", n, db.ErrCompanyNotFound)
 	}
 
 	b, err := os.ReadFile(filepath.Join("..", "testdata", "response.json"))
@@ -42,11 +43,11 @@ func TestCompanyHandler(t *testing.T) {
 	t.Parallel()
 	f, err := filepath.Abs(filepath.Join("..", "testdata", "response.json"))
 	if err != nil {
-		t.Errorf("Could understand path %s", f)
+		t.Errorf("could understand path %s", f)
 	}
 	b, err := os.ReadFile(f)
 	if err != nil {
-		t.Errorf("Could not read from %s", f)
+		t.Errorf("could not read from %s", f)
 	}
 	expected := strings.TrimSpace(string(b))
 
@@ -123,29 +124,127 @@ func TestCompanyHandler(t *testing.T) {
 			t.Parallel()
 			req, err := http.NewRequest(c.method, c.path, nil)
 			if err != nil {
-				t.Fatal("Expected an HTTP request, but got an error.")
+				t.Fatal("expected an HTTP request, but got an error.")
 			}
 			if c.method == http.MethodPost {
 				req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 			}
 
 			app := api{db: &mockDatabase{}}
-			resp := httptest.NewRecorder()
-			handler := http.HandlerFunc(app.companyHandler)
-			handler.ServeHTTP(resp, req)
+			r := httptest.NewRecorder()
+			h := http.HandlerFunc(app.companyHandler)
+			h.ServeHTTP(r, req)
 
-			if resp.Code != c.status {
-				t.Errorf("Expected %s to return %v, but got %v", c.method, c.status, resp.Code)
+			if r.Code != c.status {
+				t.Errorf("expected %s to return %v, but got %v", c.method, c.status, r.Code)
 			}
 			if c.content != "" {
-				if body := strings.TrimSpace(resp.Body.String()); body != c.content {
-					t.Errorf("\nExpected HTTP contents to be:\n\t%s\nGot:\n\t%s", c.content, resp.Body.String())
+				if b := strings.TrimSpace(r.Body.String()); b != c.content {
+					t.Errorf("\nexpected HTTP contents to be:\n\t%s\ngot:\n\t%s", c.content, r.Body.String())
 				}
-				if c := resp.Header().Get("Content-type"); c != "application/json" {
-					t.Errorf("\nExpected content-type to be application/json, but got %s", c)
+				if c := r.Header().Get("Content-type"); c != "application/json" {
+					t.Errorf("\nexpected content-type to be application/json, but got %s", c)
 				}
 			}
 		})
+	}
+}
+
+type transientErrorDatabase struct{ mockDatabase }
+
+func (d *transientErrorDatabase) GetCompany(ctx context.Context, n string) ([]byte, error) {
+	d.calls++
+	return nil, errors.New("connection refused")
+}
+
+func TestSingleCompanyTransientError(t *testing.T) {
+	t.Parallel()
+	req, err := http.NewRequest(http.MethodGet, "/19.131.243/0001-97", nil)
+	if err != nil {
+		t.Fatal("expected an HTTP request, but got an error.")
+	}
+
+	app := api{db: &transientErrorDatabase{}}
+	resp := httptest.NewRecorder()
+	h := http.HandlerFunc(app.companyHandler)
+	h.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected a transient error to return %v, but got %v", http.StatusServiceUnavailable, resp.Code)
+	}
+	if cc := resp.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("expected Cache-Control to be no-store, but got %q", cc)
+	}
+}
+
+func TestSingleCompanyNotFoundIsCached(t *testing.T) {
+	t.Parallel()
+	c, err := newCache(minCacheSize)
+	if err != nil {
+		t.Fatalf("could not create cache: %v", err)
+	}
+	d := &mockDatabase{}
+	app := api{db: d, cache: c}
+
+	do := func() *httptest.ResponseRecorder {
+		req, err := http.NewRequest(http.MethodGet, "/00.000.000/0001-91", nil)
+		if err != nil {
+			t.Fatal("expected an HTTP request, but got an error.")
+		}
+		resp := httptest.NewRecorder()
+		http.HandlerFunc(app.companyHandler).ServeHTTP(resp, req)
+		return resp
+	}
+
+	r := do()
+	if r.Code != http.StatusNotFound {
+		t.Errorf("expected first request to return %v, but got %v", http.StatusNotFound, r.Code)
+	}
+	c.r.Wait()
+
+	r = do()
+	if r.Code != http.StatusNotFound {
+		t.Errorf("expected cached request to return %v, but got %v", http.StatusNotFound, r.Code)
+	}
+	if body := strings.TrimSpace(r.Body.String()); body != `{"message":"CNPJ 00.000.000/0001-91 não encontrado."}` {
+		t.Errorf("unexpected cached 404 body: %s", body)
+	}
+	if d.calls != 1 {
+		t.Errorf("expected the database to be queried once (second request served from cache), but it was queried %d times", d.calls)
+	}
+}
+
+func TestSingleCompanyTransientErrorIsNotCached(t *testing.T) {
+	t.Parallel()
+	c, err := newCache(minCacheSize)
+	if err != nil {
+		t.Fatalf("could not create cache: %v", err)
+	}
+	d := &transientErrorDatabase{}
+	app := api{db: d, cache: c}
+
+	do := func() *httptest.ResponseRecorder {
+		req, err := http.NewRequest(http.MethodGet, "/19.131.243/0001-97", nil)
+		if err != nil {
+			t.Fatal("expected an HTTP request, but got an error.")
+		}
+		resp := httptest.NewRecorder()
+		http.HandlerFunc(app.companyHandler).ServeHTTP(resp, req)
+		return resp
+	}
+
+	r := do()
+	if r.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected first request to return %v, but got %v", http.StatusServiceUnavailable, r.Code)
+	}
+	c.r.Wait()
+
+	r = do()
+	if r.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected second request to still return %v (not cached), but got %v", http.StatusServiceUnavailable, r.Code)
+	}
+	if d.calls != 2 {
+		t.Errorf("expected the database to be queried on every request (transient error not cached), but it was queried %d times", d.calls)
 	}
 }
 
@@ -175,22 +274,22 @@ func TestHealthHandler(t *testing.T) {
 	for _, c := range cases {
 		req, err := http.NewRequest(c.method, "/healthz", nil)
 		if err != nil {
-			t.Fatal("Expected an HTTP request, but got an error.")
+			t.Fatal("expected an HTTP request, but got an error.")
 		}
 		app := api{db: &mockDatabase{}}
 		resp := httptest.NewRecorder()
-		handler := http.HandlerFunc(app.healthHandler)
-		handler.ServeHTTP(resp, req)
+		h := http.HandlerFunc(app.healthHandler)
+		h.ServeHTTP(resp, req)
 
 		if resp.Code != c.status {
-			t.Errorf("Expected %s /healthz to return %v, but got %v", c.method, c.status, resp.Code)
+			t.Errorf("expected %s /healthz to return %v, but got %v", c.method, c.status, resp.Code)
 		}
 		if strings.TrimSpace(resp.Body.String()) != c.content {
-			t.Errorf("\nExpected HTTP contents to be %s, got %s", c.content, resp.Body.String())
+			t.Errorf("\nexpected HTTP contents to be %s, got %s", c.content, resp.Body.String())
 		}
 		if c.content != "" {
 			if ct := resp.Result().Header.Get("Content-type"); ct != "application/json" {
-				t.Errorf("Expected content-type application/json, but got %s", ct)
+				t.Errorf("expected content-type application/json, but got %s", ct)
 			}
 		}
 	}
@@ -210,21 +309,21 @@ func TestUpdatedHandler(t *testing.T) {
 	} {
 		req, err := http.NewRequest(c.method, "/updated", nil)
 		if err != nil {
-			t.Fatal("Expected an HTTP request, but got an error.")
+			t.Fatal("expected an HTTP request, but got an error.")
 		}
 		resp := httptest.NewRecorder()
-		handler := http.HandlerFunc(app.updatedHandler)
-		handler.ServeHTTP(resp, req)
+		h := http.HandlerFunc(app.updatedHandler)
+		h.ServeHTTP(resp, req)
 
 		if resp.Code != c.status {
-			t.Errorf("Expected %s /urls to return %v, but got %v", c.method, c.status, resp.Code)
+			t.Errorf("expected %s /urls to return %v, but got %v", c.method, c.status, resp.Code)
 		}
 		if strings.TrimSpace(resp.Body.String()) != c.content {
-			t.Errorf("\nExpected HTTP contents to be %s, got %s", c.content, resp.Body.String())
+			t.Errorf("\nexpected HTTP contents to be %s, got %s", c.content, resp.Body.String())
 		}
 		if c.content != "" {
 			if ct := resp.Result().Header.Get("Content-type"); ct != "application/json" {
-				t.Errorf("Expected content-type application/json, but got %s", ct)
+				t.Errorf("expected content-type application/json, but got %s", ct)
 			}
 		}
 	}
@@ -243,14 +342,14 @@ func TestAllowedHostWrap(t *testing.T) {
 			req, err := http.NewRequest(http.MethodGet, "/19131243000197", nil)
 			req.Host = "127.0.0.1"
 			if err != nil {
-				t.Fatal("Expected an HTTP request, but got an error.")
+				t.Fatal("expected an HTTP request, but got an error.")
 			}
 			resp := httptest.NewRecorder()
 			app := api{db: &mockDatabase{}, host: c.allowedHost}
-			handler := http.HandlerFunc(app.allowedHostWrapper(app.companyHandler))
-			handler.ServeHTTP(resp, req)
+			h := http.HandlerFunc(app.allowedHostWrapper(app.companyHandler))
+			h.ServeHTTP(resp, req)
 			if resp.Code != c.status {
-				t.Errorf("Expected request with allowed host `%s` to return %d, but got %d (request header had `%s`) ", c.allowedHost, c.status, resp.Code, req.Host)
+				t.Errorf("expected request with allowed host `%s` to return %d, but got %d (request header had `%s`) ", c.allowedHost, c.status, resp.Code, req.Host)
 			}
 		})
 	}
