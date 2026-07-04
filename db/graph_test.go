@@ -65,13 +65,13 @@ func TestRelationshipSerialization(t *testing.T) {
 				b, err = tt.rel.EncodePartner()
 			}
 			if err != nil {
-				t.Fatalf("Encode failed: %v", err)
+				t.Fatalf("encode failed: %v", err)
 			}
 
 			var decoded Relationship
 			err = decoded.Decode(b)
 			if err != nil {
-				t.Fatalf("Decode failed: %v", err)
+				t.Fatalf("decode failed: %v", err)
 			}
 
 			if tt.isCompany {

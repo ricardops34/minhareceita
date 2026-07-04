@@ -54,7 +54,7 @@ func TestCreate(t *testing.T) {
 
 	err = Create(context.Background(), s, int64(len(data)), path, nil)
 	if err != nil {
-		t.Fatalf("Create failed: %v", err)
+		t.Fatalf("create failed: %v", err)
 	}
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {

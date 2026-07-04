@@ -100,7 +100,7 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 	if err != nil {
 		if errors.Is(err, db.ErrCompanyNotFound) {
 			if app.cache != nil {
-				app.cache.set(id, []byte{})
+				app.cache.set(id, nil)
 			}
 			app.messageResponse(w, http.StatusNotFound, fmt.Sprintf("CNPJ %s não encontrado.", cnpj.Mask(pth)))
 			registerMetric("singleCompany", r.Method, http.StatusNotFound, i)

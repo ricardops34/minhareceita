@@ -59,7 +59,7 @@ func TestAPI(t *testing.T) {
 
 	err = Create(context.Background(), s, int64(len(data)), path, nil)
 	if err != nil {
-		t.Fatalf("Create failed: %v", err)
+		t.Fatalf("create failed: %v", err)
 	}
 
 	srv, err := NewServer(path, 0)
