@@ -173,7 +173,7 @@ func (m *MongoDB) PostLoad() error {
 		}}},
 		{{Key: "$match", Value: bson.D{{Key: "count", Value: bson.D{{Key: "$gt", Value: 1}}}}}},
 	}
-	c, err := coll.Aggregate(ctx, p)
+	c, err := coll.Aggregate(ctx, p, options.Aggregate().SetAllowDiskUse(true))
 	if err != nil {
 		return fmt.Errorf("error executing aggregation: %w", err)
 	}
@@ -300,7 +300,7 @@ func (m *MongoDB) Search(ctx context.Context, q *Query) ([]byte, error) {
 		}
 		f["_id"] = bson.M{"$gt": id}
 	}
-	opts := options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}).SetLimit(int64(q.Limit))
+	opts := options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}).SetLimit(int64(q.Limit)).SetAllowDiskUse(true)
 	c, err := coll.Find(ctx, f, opts)
 	if err != nil {
 		return nil, fmt.Errorf("error running query %#v: %w", q, err)
@@ -373,7 +373,8 @@ func (m *MongoDB) AllCompanies(ctx context.Context, cursor *string, limit uint32
 	opts := options.Find().
 		SetProjection(bson.D{{Key: idFieldName, Value: 1}, {Key: "_id", Value: 1}}).
 		SetSort(bson.D{{Key: "_id", Value: 1}}).
-		SetLimit(int64(limit))
+		SetLimit(int64(limit)).
+		SetAllowDiskUse(true)
 	c, err := coll.Find(ctx, f, opts)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error listing CNPJs: %w", err)
@@ -421,7 +422,7 @@ func (m *MongoDB) StreamRelationships(ctx context.Context, callback func(Relatio
 			{Key: "partner_type", Value: "$json.qsa.identificador_de_socio"},
 		}}},
 	}
-	cur, err := coll.Aggregate(ctx, p)
+	cur, err := coll.Aggregate(ctx, p, options.Aggregate().SetAllowDiskUse(true))
 	if err != nil {
 		return fmt.Errorf("error querying relationship aggregation: %w", err)
 	}
@@ -464,7 +465,7 @@ func (m *MongoDB) RelationshipCount(ctx context.Context) (int64, error) {
 			{Key: "total", Value: bson.D{{Key: "$sum", Value: "$qsa_size"}}},
 		}}},
 	}
-	cur, err := coll.Aggregate(ctx, p)
+	cur, err := coll.Aggregate(ctx, p, options.Aggregate().SetAllowDiskUse(true))
 	if err != nil {
 		return 0, fmt.Errorf("error executing count aggregation: %w", err)
 	}
