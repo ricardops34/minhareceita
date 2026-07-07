@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -95,6 +96,18 @@ func TestCompanyHandler(t *testing.T) {
 		},
 		{
 			http.MethodGet,
+			"/12%2234",
+			http.StatusBadRequest,
+			`{"message":"CNPJ 1234 inválido."}`,
+		},
+		{
+			http.MethodGet,
+			"/%22%22%22",
+			http.StatusBadRequest,
+			`{"message":"CNPJ informado inválido."}`,
+		},
+		{
+			http.MethodGet,
 			"/00.000.000/0001-91",
 			http.StatusNotFound,
 			`{"message":"CNPJ 00.000.000/0001-91 não encontrado."}`,
@@ -145,6 +158,31 @@ func TestCompanyHandler(t *testing.T) {
 				if c := r.Header().Get("Content-type"); c != "application/json" {
 					t.Errorf("\nexpected content-type to be application/json, but got %s", c)
 				}
+			}
+		})
+	}
+}
+
+func TestMessageResponseIsValidJSON(t *testing.T) {
+	t.Parallel()
+	for _, m := range []string{
+		`aspas " no meio`,
+		`barra \ invertida`,
+		"quebra\nde linha",
+		`CNPJ ab"cd inválido.`,
+	} {
+		t.Run(m, func(t *testing.T) {
+			t.Parallel()
+			app := api{db: &mockDatabase{}}
+			r := httptest.NewRecorder()
+			app.messageResponse(r, http.StatusBadRequest, m)
+
+			var got messagePayload
+			if err := json.Unmarshal(r.Body.Bytes(), &got); err != nil {
+				t.Fatalf("expected valid JSON for message %q, but got error %v (body: %s)", m, err, r.Body.String())
+			}
+			if got.Message != m {
+				t.Errorf("expected message to round-trip as %q, but got %q", m, got.Message)
 			}
 		})
 	}
