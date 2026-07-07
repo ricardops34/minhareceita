@@ -43,6 +43,37 @@ type api struct {
 	check *bloom.Filter
 }
 
+type messagePayload struct {
+	Message string `json:"message"`
+}
+
+func safeCNPJ(n string) string {
+	safe := strings.Map(func(r rune) rune {
+		switch {
+		case r >= '0' && r <= '9',
+			r >= 'A' && r <= 'Z',
+			r >= 'a' && r <= 'z',
+			r == '.', r == '/', r == '-':
+			return r
+		default:
+			return -1
+		}
+	}, n)
+	if safe == "" {
+		return "informado"
+	}
+	return safe
+}
+
+func jsonMessage(m string) ([]byte, error) {
+	if strings.ContainsFunc(m, func(r rune) bool {
+		return r == '"' || r == '\\' || r < 0x20
+	}) {
+		return json.Marshal(messagePayload{m})
+	}
+	return []byte(fmt.Sprintf(`{"message":"%s"}`, m)), nil
+}
+
 // messageResponse takes a text message and a HTTP status, wraps the message into a
 // JSON output and writes it together with the proper headers to a response.
 func (app *api) messageResponse(w http.ResponseWriter, s int, m string) {
@@ -51,9 +82,7 @@ func (app *api) messageResponse(w http.ResponseWriter, s int, m string) {
 	}
 	w.WriteHeader(s)
 	if m != "" {
-		b, err := json.Marshal(struct {
-			Message string `json:"message"`
-		}{m})
+		b, err := jsonMessage(m)
 		if err != nil {
 			slog.Error("could not marshal response message", "status code", s, "message", m, "error", err)
 		} else if _, err := w.Write(b); err != nil {
@@ -68,7 +97,7 @@ func (app *api) messageResponse(w http.ResponseWriter, s int, m string) {
 func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request, i int64) {
 	w.Header().Set("Content-type", "application/json")
 	if !cnpj.IsValid(pth) {
-		app.messageResponse(w, http.StatusBadRequest, fmt.Sprintf("CNPJ %s inválido.", cnpj.Mask(pth[1:])))
+		app.messageResponse(w, http.StatusBadRequest, fmt.Sprintf("CNPJ %s inválido.", safeCNPJ(cnpj.Mask(pth[1:]))))
 		registerMetric("singleCompany", r.Method, http.StatusBadRequest, i)
 		return
 	}

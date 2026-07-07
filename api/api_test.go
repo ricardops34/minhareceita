@@ -96,6 +96,18 @@ func TestCompanyHandler(t *testing.T) {
 		},
 		{
 			http.MethodGet,
+			"/12%2234",
+			http.StatusBadRequest,
+			`{"message":"CNPJ 1234 inválido."}`,
+		},
+		{
+			http.MethodGet,
+			"/%22%22%22",
+			http.StatusBadRequest,
+			`{"message":"CNPJ informado inválido."}`,
+		},
+		{
+			http.MethodGet,
 			"/00.000.000/0001-91",
 			http.StatusNotFound,
 			`{"message":"CNPJ 00.000.000/0001-91 não encontrado."}`,
@@ -165,9 +177,7 @@ func TestMessageResponseIsValidJSON(t *testing.T) {
 			r := httptest.NewRecorder()
 			app.messageResponse(r, http.StatusBadRequest, m)
 
-			var got struct {
-				Message string `json:"message"`
-			}
+			var got messagePayload
 			if err := json.Unmarshal(r.Body.Bytes(), &got); err != nil {
 				t.Fatalf("expected valid JSON for message %q, but got error %v (body: %s)", m, err, r.Body.String())
 			}
