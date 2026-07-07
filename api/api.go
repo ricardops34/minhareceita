@@ -6,9 +6,9 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -51,7 +51,12 @@ func (app *api) messageResponse(w http.ResponseWriter, s int, m string) {
 	}
 	w.WriteHeader(s)
 	if m != "" {
-		if _, err := io.WriteString(w, fmt.Sprintf(`{"message":"%s"}`, m)); err != nil {
+		b, err := json.Marshal(struct {
+			Message string `json:"message"`
+		}{m})
+		if err != nil {
+			slog.Error("could not marshal response message", "status code", s, "message", m, "error", err)
+		} else if _, err := w.Write(b); err != nil {
 			slog.Error("could not write response message for", "status code", s, "message", m, "error", err)
 		}
 	}
