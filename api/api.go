@@ -6,9 +6,9 @@ package api
 import (
 	"bytes"
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -36,17 +36,6 @@ type database interface {
 	AllCompanies(context.Context, *string, uint32) ([]string, *string, error)
 }
 
-type api struct {
-	db    database
-	host  string
-	cache *cache
-	check *bloom.Filter
-}
-
-type messagePayload struct {
-	Message string `json:"message"`
-}
-
 func safeCNPJ(n string) string {
 	safe := strings.Map(func(r rune) rune {
 		switch {
@@ -62,16 +51,14 @@ func safeCNPJ(n string) string {
 	if safe == "" {
 		return "informado"
 	}
-	return safe
+	return cnpj.Mask(safe)
 }
 
-func jsonMessage(m string) ([]byte, error) {
-	if strings.ContainsFunc(m, func(r rune) bool {
-		return r == '"' || r == '\\' || r < 0x20
-	}) {
-		return json.Marshal(messagePayload{m})
-	}
-	return []byte(fmt.Sprintf(`{"message":"%s"}`, m)), nil
+type api struct {
+	db    database
+	host  string
+	cache *cache
+	check *bloom.Filter
 }
 
 // messageResponse takes a text message and a HTTP status, wraps the message into a
@@ -82,10 +69,7 @@ func (app *api) messageResponse(w http.ResponseWriter, s int, m string) {
 	}
 	w.WriteHeader(s)
 	if m != "" {
-		b, err := jsonMessage(m)
-		if err != nil {
-			slog.Error("could not marshal response message", "status code", s, "message", m, "error", err)
-		} else if _, err := w.Write(b); err != nil {
+		if _, err := io.WriteString(w, fmt.Sprintf(`{"message":"%s"}`, m)); err != nil {
 			slog.Error("could not write response message for", "status code", s, "message", m, "error", err)
 		}
 	}
@@ -97,7 +81,7 @@ func (app *api) messageResponse(w http.ResponseWriter, s int, m string) {
 func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request, i int64) {
 	w.Header().Set("Content-type", "application/json")
 	if !cnpj.IsValid(pth) {
-		app.messageResponse(w, http.StatusBadRequest, fmt.Sprintf("CNPJ %s inválido.", safeCNPJ(cnpj.Mask(pth[1:]))))
+		app.messageResponse(w, http.StatusBadRequest, fmt.Sprintf("CNPJ %s inválido.", safeCNPJ(pth[1:])))
 		registerMetric("singleCompany", r.Method, http.StatusBadRequest, i)
 		return
 	}

@@ -163,26 +163,32 @@ func TestCompanyHandler(t *testing.T) {
 	}
 }
 
-func TestMessageResponseIsValidJSON(t *testing.T) {
+func TestInvalidCNPJResponseIsValidJSON(t *testing.T) {
 	t.Parallel()
-	for _, m := range []string{
-		`aspas " no meio`,
-		`barra \ invertida`,
-		"quebra\nde linha",
-		`CNPJ ab"cd inválido.`,
+	for _, p := range []string{
+		`/aspas%20%22%20no%20meio`,
+		`/barra%20%5C%20invertida`,
+		`/quebra%0Ade%20linha`,
+		`/CNPJ%20ab%22cd%20inv%C3%A1lido.`,
 	} {
-		t.Run(m, func(t *testing.T) {
+		t.Run(p, func(t *testing.T) {
 			t.Parallel()
+			req, err := http.NewRequest(http.MethodGet, p, nil)
+			if err != nil {
+				t.Fatal("expected an HTTP request, but got an error.")
+			}
 			app := api{db: &mockDatabase{}}
 			r := httptest.NewRecorder()
-			app.messageResponse(r, http.StatusBadRequest, m)
+			http.HandlerFunc(app.companyHandler).ServeHTTP(r, req)
 
-			var got messagePayload
-			if err := json.Unmarshal(r.Body.Bytes(), &got); err != nil {
-				t.Fatalf("expected valid JSON for message %q, but got error %v (body: %s)", m, err, r.Body.String())
+			if r.Code != http.StatusBadRequest {
+				t.Fatalf("expected bad request for %s, but got %v", p, r.Code)
 			}
-			if got.Message != m {
-				t.Errorf("expected message to round-trip as %q, but got %q", m, got.Message)
+			var got struct {
+				Message string `json:"message"`
+			}
+			if err := json.Unmarshal(r.Body.Bytes(), &got); err != nil {
+				t.Fatalf("expected valid JSON for path %s, but got error %v (body: %s)", p, err, r.Body.String())
 			}
 		})
 	}
