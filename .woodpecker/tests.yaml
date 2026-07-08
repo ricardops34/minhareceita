@@ -13,7 +13,7 @@ services:
       POSTGRES_USER: minhareceita
       POSTGRES_DB: minhareceita
   - name: mongodb
-    image: mongo:8.0-noble
+    image: rnsc/mongo-wo-avx:8.0.26
     environment:
       MONGO_INITDB_ROOT_USERNAME: minhareceita
       MONGO_INITDB_ROOT_PASSWORD: minhareceita

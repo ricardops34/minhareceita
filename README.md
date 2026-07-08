@@ -2,9 +2,13 @@
 
 ![Minha Receita](docs/minha-receita.svg)
 
-[![Testes](https://ci.codeberg.org/api/badges/15902/status.svg)](https://ci.codeberg.org/repos/15902)
-
 API web para consulta de informações do CNPJ (Cadastro Nacional da Pessoa Jurídica) da Receita Federal.
+
+[![format](https://ci.cuducos.me/api/badges/1/status.svg?workflow=format)](https://ci.cuducos.me/repos/1)
+[![lint](https://ci.cuducos.me/api/badges/1/status.svg?workflow=lint)](https://ci.cuducos.me/repos/1)
+[![tests](https://ci.cuducos.me/api/badges/1/status.svg?workflow=tests)](https://ci.cuducos.me/repos/1)
+[![build](https://ci.cuducos.me/api/badges/1/status.svg?workflow=build)](https://ci.cuducos.me/repos/1)
+[![docs](https://ci.cuducos.me/api/badges/1/status.svg?workflow=docs)](https://docs.minhareceita.org)
 
 [Documentação](https://docs.minhareceita.org)<br>
 [Guia de contribuição](https://docs.minhareceita.org/contributing/)<br>
