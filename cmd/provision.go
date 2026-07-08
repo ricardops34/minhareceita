@@ -78,9 +78,6 @@ func newTarget(args []string) (target, error) {
 	if user == "" {
 		user = "root"
 	}
-	if user == "" {
-		user = "ubuntu"
-	}
 	if _, err := strconv.Atoi(port); err != nil {
 		return target{}, fmt.Errorf("invalid port %q: %w", port, err)
 	}
