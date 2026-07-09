@@ -17,9 +17,6 @@ services:
       POSTGRES_DB: minhareceita
   - name: mongodb
     image: rnsc/mongo-wo-avx:8.0.26
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: minhareceita
-      MONGO_INITDB_ROOT_PASSWORD: minhareceita
     ports:
       - 27017
 
@@ -29,6 +26,6 @@ steps:
     environment:
       GOEXPERIMENT: jsonv2
       TEST_POSTGRES_URL: postgres://minhareceita:minhareceita@postgresql:5432/minhareceita?sslmode=disable
-      TEST_MONGODB_URL: mongodb://minhareceita:minhareceita@mongodb:27017/minhareceita?authSource=admin
+      TEST_MONGODB_URL: mongodb://mongodb:27017/minhareceita
     commands:
       - go test --race ./...
