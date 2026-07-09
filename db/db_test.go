@@ -14,6 +14,8 @@ import (
 	"codeberg.org/cuducos/minha-receita/company"
 )
 
+const dbRetryAttempts = 1 << 4
+
 type database interface {
 	Create() error
 	Drop() error

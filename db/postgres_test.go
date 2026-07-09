@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"codeberg.org/cuducos/minha-receita/company"
 	"codeberg.org/cuducos/minha-receita/testutils"
@@ -21,7 +22,15 @@ func setUpPostgres(id string, c company.Company) (*PostgreSQL, error) {
 	if u == "" {
 		return nil, fmt.Errorf("expected a posgres uri at TEST_POSTGRES_URL, found nothing")
 	}
-	db, err := NewPostgreSQL(&Args{URI: u, PostgresSchema: "public", MaxConns: maxConnsDefault})
+	var db PostgreSQL
+	var err error
+	for range dbRetryAttempts {
+		db, err = NewPostgreSQL(&Args{URI: u, PostgresSchema: "public", MaxConns: maxConnsDefault})
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("expected no error connecting to postgres, got %w", err)
 	}

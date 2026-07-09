@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"codeberg.org/cuducos/minha-receita/company"
 	"codeberg.org/cuducos/minha-receita/testutils"
@@ -22,7 +23,15 @@ func setUpMongo(id string, c company.Company) (*MongoDB, error) {
 	if u == "" {
 		return nil, fmt.Errorf("expected a mongodb uri at TEST_MONGODB_URL, found nothing")
 	}
-	db, err := NewMongoDB(&Args{URI: u})
+	var db MongoDB
+	var err error
+	for range dbRetryAttempts {
+		db, err = NewMongoDB(&Args{URI: u})
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("expected no error connecting to mongodb, got %s", err)
 	}
