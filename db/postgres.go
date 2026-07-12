@@ -502,7 +502,10 @@ func (p *PostgreSQL) StreamRelationships(ctx context.Context, callback func(Rela
 		if len(rec) < 6 {
 			continue
 		}
-		t, _ := strconv.Atoi(rec[5])
+		t, err := strconv.Atoi(rec[5])
+		if err != nil {
+			return err
+		}
 		rel := Relationship{
 			CompanyID:   rec[0],
 			CompanyName: rec[1],

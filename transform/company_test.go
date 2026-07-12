@@ -3,32 +3,25 @@ package transform
 import (
 	"context"
 	"log/slog"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"codeberg.org/cuducos/minha-receita/company"
 )
 
-func loadAllTestSources(t *testing.T, kv *kv) string {
+func loadAllTestSources(t *testing.T, kv *kv) {
 	t.Helper()
 	srcs := sources()
 	ctx := context.Background()
 	ts := testIBGEMunicipalitiesServer(t)
 	defer ts.Close()
-
-	ext := t.TempDir()
-	pth := filepath.Join(testdataDir, "2026-01.zip")
-	if err := unzipMainArchive(pth, ext, nil); err != nil {
-		t.Fatalf("expected no error extracting archive, got %s", err)
-	}
 	for _, src := range srcs {
 		var err error
 		switch src.kind {
 		case CompanySrc:
-			err = loadCSVs(ctx, ext, src, nil, kv, false)
+			err = loadCSVs(ctx, testdataDir, src, nil, kv)
 		case TaxSrc:
-			err = loadCSVs(ctx, testdataDir, src, nil, kv, false)
+			err = loadCSVs(ctx, testdataDir, src, nil, kv)
 		case IBGESrc:
 			err = loadIBGEMunicipalitiesFromURL(ctx, ts.URL, src, nil, kv)
 		}
@@ -39,7 +32,6 @@ func loadAllTestSources(t *testing.T, kv *kv) string {
 	if err := kv.flush(); err != nil {
 		t.Fatalf("expected no error flushing key-value storage, got %s", err)
 	}
-	return ext
 }
 
 var dataSituacaoCadastral = company.Date(time.Date(2004, 5, 22, 0, 0, 0, 0, time.UTC))

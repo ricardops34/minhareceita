@@ -437,7 +437,10 @@ func (m *MongoDB) StreamRelationships(ctx context.Context, callback func(Relatio
 		if err := cur.Decode(&rel); err != nil {
 			return fmt.Errorf("error decoding relationship: %w", err)
 		}
-		t, _ := rel["partner_type"].(int32)
+		t, ok := rel["partner_type"].(int32)
+		if !ok {
+			return fmt.Errorf("invalid partner type: %q", rel["partner_type"])
+		}
 		r := Relationship{
 			CompanyID:   fmt.Sprintf("%v", rel["company_id"]),
 			CompanyName: fmt.Sprintf("%v", rel["company_name"]),

@@ -19,12 +19,6 @@ func testIBGEMunicipalitiesServer(t *testing.T) *httptest.Server {
 
 func TestLoadCompanyCSVs(t *testing.T) {
 	srcs := sources()
-	pth := filepath.Join(testdataDir, "2026-01.zip")
-	ext := t.TempDir()
-	if err := unzipMainArchive(pth, ext, nil); err != nil {
-		t.Fatalf("expected no error extracting archive, got %s", err)
-	}
-
 	for _, tc := range []struct {
 		key string
 		exp []string
@@ -51,7 +45,7 @@ func TestLoadCompanyCSVs(t *testing.T) {
 			if err != nil {
 				t.Errorf("expected no error creating badger, got %s", err)
 			}
-			if err := loadCSVs(ctx, ext, src, nil, kv, false); err != nil {
+			if err := loadCSVs(ctx, testdataDir, src, nil, kv); err != nil {
 				t.Errorf("expected no error loading csvs, got %s", err)
 			}
 			for _, id := range tc.exp {
@@ -92,7 +86,7 @@ func TestLoadCSVs(t *testing.T) {
 			if err != nil {
 				t.Errorf("expected no error creating badger, got %s", err)
 			}
-			if err := loadCSVs(ctx, testdataDir, src, nil, kv, false); err != nil {
+			if err := loadCSVs(ctx, testdataDir, src, nil, kv); err != nil {
 				t.Errorf("expected no error loading csvs, got %s", err)
 			}
 			for _, id := range tc.exp {

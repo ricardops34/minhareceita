@@ -65,7 +65,7 @@ func addDataDir(c *cobra.Command) *cobra.Command {
 }
 
 func addDatabase(c *cobra.Command, args *db.Args) *cobra.Command {
-	c.Flags().StringVarP(&uri, "database-uri", "u", "", "Database URI (default DATABASE_URL environment variable)")
+	c.Flags().StringVarP(&uri, "database-uri", "u", "", "database URI (default DATABASE_URL environment variable)")
 	c.Flags().StringVarP(&args.PostgresSchema, "postgres-schema", "s", "public", "PostgreSQL schema")
 	return c
 }
@@ -97,6 +97,7 @@ func CLI() *cobra.Command {
 		dropCmd,
 		createExtraIndexesCmd,
 		addDataDir(cleanupTempCmd),
+		addDataDir(downloadCmd),
 		addDataDir(transformCLI()),
 		provisionCLI(),
 		reportCmd,
