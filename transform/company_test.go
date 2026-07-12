@@ -13,8 +13,6 @@ func loadAllTestSources(t *testing.T, kv *kv) {
 	t.Helper()
 	srcs := sources()
 	ctx := context.Background()
-	ts := testIBGEMunicipalitiesServer(t)
-	defer ts.Close()
 	for _, src := range srcs {
 		var err error
 		switch src.kind {
@@ -23,7 +21,7 @@ func loadAllTestSources(t *testing.T, kv *kv) {
 		case TaxSrc:
 			err = loadCSVs(ctx, testdataDir, src, nil, kv)
 		case IBGESrc:
-			err = loadIBGEMunicipalitiesFromURL(ctx, ts.URL, src, nil, kv)
+			err = loadCSVs(ctx, testdataDir, src, nil, kv)
 		}
 		if err != nil {
 			t.Fatalf("expected no error loading %s data, got %s", src.prefix, err)

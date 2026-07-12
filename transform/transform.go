@@ -157,14 +157,6 @@ func findUpdatedAt(dir string) (string, error) {
 }
 
 func Transform(dir string, db database, batch int, privacy bool) error {
-	ibgeMunicipalitiesURL, err := ibgeMunicipalitiesURL()
-	if err != nil {
-		return fmt.Errorf("could not discover ibge municipalities URL: %w", err)
-	}
-	return transform(dir, db, batch, privacy, ibgeMunicipalitiesURL)
-}
-
-func transform(dir string, db database, batch int, privacy bool, ibgeMunicipalitiesURL string) error {
 	if err := db.PreLoad(); err != nil {
 		return err
 	}
@@ -206,7 +198,7 @@ func transform(dir string, db database, batch int, privacy bool, ibgeMunicipalit
 			case TaxSrc:
 				return loadCSVs(ctx, dir, src, bar, kv)
 			case IBGESrc:
-				return loadIBGEMunicipalitiesFromURL(ctx, ibgeMunicipalitiesURL, src, bar, kv)
+				return loadCSVs(ctx, dir, src, bar, kv)
 			}
 			return fmt.Errorf("unknown source kind %d for %s", src.kind, src.prefix)
 		})
