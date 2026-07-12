@@ -86,6 +86,7 @@ flowchart
     ETL2@{ shape: subproc, label: "Etapa 2" }
     ETL3@{ shape: subproc, label: "Etapa 3" }
     DB@{ shape: db, label: "Banco de dados" }
+    GR@{ shape: db, label: "Grafo" }
 
     Cna -->|Lê| ETL1
     Mot -->|Lê| ETL1
@@ -110,6 +111,7 @@ flowchart
     Ext -->|Lê Estabelecimentos| ETL3
     Bad -->|Enriquece| ETL3
     ETL3 -->|JSON| DB
+    ETL3 -->|Formato customizado| GR
 ```
 
 | Etapa | Descrição | Armazenamento |
@@ -117,3 +119,44 @@ flowchart
 | 1 | Descomprime `YYYY-MM.zip` em diretório temporário em disco | Disco |
 | 2 | Carrega pares de chave e valor para: `Cnaes.zip`, `Motivos.zip`, `Municipios.zip`, `Paises.zip`, `Naturezas.zip`, `Qualificacoes.zip`, `Empresas*`, `Socios*`, `Simples.zip`, regimes tributários (`entidades-*.zip`) e códigos dos municípios do IBGE | [Badger](https://dgraph.io/docs/badger/) |
 | 3 | Lê os arquivos `Estabelecimentos*`, enriquece com os dados da etapa anterior e salva os resultados no banco de dados | Banco de dados |
+
+### Formato customizado do Grafo
+
+Os dados para construção do [grafo](grafo.md) são salvos em
+um banco de armazenamento de chave e valor chamado [Badger](https://dgraph-io.github.io/badger/).
+
+#### Chaves
+
+Para representar bidirecionalidade, cada relação é salva duas vezes com as seguintes chaves: `rel:CNPJ->ID` e `rel:ID<-CNPJ`.
+
+##### Pessoa Jurídica
+
+A identificação única de pessoas jurídicas (no exemplo, `ID` ou `CNPJ`) é o CNPJ apenas com caracteres alfanuméricos.
+
+##### Pessoa Física
+
+!!! warning "Importante"
+    Na base da Receita Federal, os três primeiros e últimos dois dígitos do campo CPF são *sempre* `*`.
+
+A identificação pseudo-única de pessoas físicas (`ID` no exemplo acima) é um _hash_ MD5 do campo _CPF ou CNPJ_, seguido pelo nome da entidade do quadro societário (sem espaço).
+
+Por exemplo, se a pessoa _Fulane_ tem o CPF `***000000**`, o identificador será `md5("***000000**Fulane")`.
+
+##### Entidade Estrangeira
+
+A identificação pseudo-única de entidades estrangeiras (`ID` no exemplo acima) é um _hash_ MD5 do campo _Código do País_, seguido pelo nome da entidade do quadro societário (sem espaço).
+
+Por exemplo, se a entidade _Company_ tem o código de país `42`, o identificador será `md5("42Company")`.
+
+#### Valores
+
+Os _bytes_ armazenados tem um formato customizado. O primeiro _byte_ é um número inteiro identificando o tipo:
+
+1. Pessoa Jurídica
+2. Pessoa Física
+3. Entidade Estrangeira
+
+Utilizando esse número se decide como ler os próximos bytes:
+
+* **Caso seja pessoa física**, os próximos 11 _bytes_ são o CPF e, o restante, o nome
+* **Caso contrário**, o restante é o nome

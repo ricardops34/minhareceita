@@ -9,9 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
-	"codeberg.org/cuducos/minha-receita/db"
+	"codeberg.org/cuducos/minha-receita/company"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -28,7 +29,7 @@ func TestAPI(t *testing.T) {
 
 	path := filepath.Join(tmp, "graph")
 
-	data := []db.Relationship{
+	data := []company.Relationship{
 		{
 			CompanyID:   "11111111000111",
 			CompanyName: "Company A",
@@ -55,12 +56,28 @@ func TestAPI(t *testing.T) {
 		},
 	}
 
-	s := &mockStreamer{relationships: data}
-
-	err = Create(context.Background(), s, int64(len(data)), path, nil)
+	w, err := NewWriter(path)
 	if err != nil {
-		t.Fatalf("create failed: %v", err)
+		t.Fatalf("writer failed: %v", err)
 	}
+	var close sync.Once
+	defer close.Do(func() {
+		if err := w.Close(); err != nil {
+			t.Errorf("expected no error closing writer, got %q", err)
+		}
+	})
+
+	for _, r := range data {
+		if err := w.Save(&r); err != nil {
+			t.Errorf("expected no error saving relationship, got %q", err)
+		}
+	}
+
+	close.Do(func() {
+		if err := w.Close(); err != nil {
+			t.Fatalf("expected no error closing writer, got %q", err)
+		}
+	})
 
 	srv, err := NewServer(path, 0)
 	if err != nil {
@@ -84,7 +101,7 @@ func TestAPI(t *testing.T) {
 			t.Errorf("expected 200, got %d", res.StatusCode)
 		}
 
-		var rels []db.Relationship
+		var rels []company.Relationship
 		err := json.NewDecoder(res.Body).Decode(&rels)
 		if err != nil {
 			t.Fatalf("failed to decode response: %v", err)
@@ -111,7 +128,7 @@ func TestAPI(t *testing.T) {
 			t.Errorf("expected 200, got %d", res.StatusCode)
 		}
 
-		var rels []db.Relationship
+		var rels []company.Relationship
 		err := json.NewDecoder(res.Body).Decode(&rels)
 		if err != nil {
 			t.Fatalf("failed to decode response: %v", err)

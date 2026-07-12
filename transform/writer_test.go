@@ -3,6 +3,7 @@ package transform
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"codeberg.org/cuducos/minha-receita/company"
@@ -46,6 +47,17 @@ func (db *testDB) MetaSave(key, value string) error {
 	return nil
 }
 
+type testGraph struct{ called atomic.Uint32 }
+
+func (g *testGraph) Save(r *company.Relationship) error {
+	g.called.Add(1)
+	return nil
+}
+
+func (g *testGraph) Close() error { return nil }
+
+func (g *testGraph) Path() string { return "testpath" }
+
 func TestWriteJSONs(t *testing.T) {
 	ctx := context.Background()
 	srcs := sources()
@@ -60,11 +72,12 @@ func TestWriteJSONs(t *testing.T) {
 	}()
 	ext := loadAllTestSources(t, kv)
 	db := &testDB{}
+	graph := &testGraph{}
 	if err := db.PreLoad(); err != nil {
 		t.Fatalf("expected no error calling PreLoad, got %s", err)
 	}
 	src := newCompanySrc("Estabelecimentos", ';', false, false)
-	w, err := newWriter(db, kv, srcs, 8192, false, ext, src)
+	w, err := newWriter(db, graph, kv, srcs, 8192, false, ext, src)
 	if err != nil {
 		t.Fatalf("expected no error creating writer, got %s", err)
 	}
@@ -81,5 +94,8 @@ func TestWriteJSONs(t *testing.T) {
 	exp := "33683111000280"
 	if _, ok := db.data[exp]; !ok {
 		t.Errorf("expected CNPJ %s to be persisted, got nil", exp)
+	}
+	if graph.called.Load() != 6 {
+		t.Errorf("expected 6 relationships, got %d", graph.called.Load())
 	}
 }

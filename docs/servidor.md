@@ -57,6 +57,8 @@ A fonte oficial desses arquivos é sempre o [Portal de Dados Abertos](https://da
 
 O comando `transform` transforma os arquivos para o formato JSON, consolidando as informações de todos os arquivos CSV. Esse JSON é armazenado diretamente no banco de dados. Para tanto, é preciso criar a tabela no banco de dados com o comando `create` (o comando `drop` pode ser utilizado para excluir essa mesma tabela).
 
+Esse comando também cria um arquivo `graph.tar.gz` separado com todas as informações do [grafo](grafo.md).
+
 Para especificar onde ficam os arquivos originais da Receita Federal e do Tesouro Nacional, o comando aceita como argumento `--directory` (ou `-d`), sendo o padrão `data/`.
 
 

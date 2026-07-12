@@ -23,6 +23,7 @@ import (
 
 type writer struct {
 	db      database
+	graph   graphWriter
 	kv      *kv
 	srcs    map[string]*source
 	batch   int
@@ -88,6 +89,45 @@ func (w *writer) process(ctx context.Context, pth string) error {
 	return nil
 }
 
+func (w *writer) saveBatch(ctx context.Context, b []company.Company) error {
+	if len(b) == 0 {
+		return nil
+	}
+	g, ctx := errgroup.WithContext(ctx)
+	if w.db != nil {
+		g.Go(func() error {
+			return w.db.CreateCompanies(ctx, b)
+		})
+	}
+	if w.graph != nil {
+		ch := make(chan *company.Relationship)
+		g.Go(func() error {
+			defer close(ch)
+			for _, c := range b {
+				c.Relationships(ch)
+			}
+			return nil
+		})
+		g.Go(func() error {
+			s, sctx := errgroup.WithContext(ctx)
+			s.SetLimit(1024) // arbitrary (avoid spinning so many goroutines)
+			for r := range ch {
+				r := r
+				s.Go(func() error {
+					select {
+					case <-sctx.Done():
+						return sctx.Err()
+					default:
+						return w.graph.Save(r)
+					}
+				})
+			}
+			return s.Wait()
+		})
+	}
+	return g.Wait()
+}
+
 func (w *writer) processCSV(ctx context.Context, f *zip.File) error {
 	r, err := f.Open()
 	if err != nil {
@@ -111,10 +151,7 @@ func (w *writer) processCSV(ctx context.Context, f *zip.File) error {
 			row, err := csvr.Read()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
-					if len(b) > 0 {
-						return w.db.CreateCompanies(ctx, b)
-					}
-					return nil
+					return w.saveBatch(ctx, b)
 				}
 				return fmt.Errorf("error reading %s: %w", f.Name, err)
 			}
@@ -133,7 +170,7 @@ func (w *writer) processCSV(ctx context.Context, f *zip.File) error {
 			}
 			b = append(b, *c)
 			if len(b) >= w.batch {
-				if err := w.db.CreateCompanies(ctx, b); err != nil {
+				if err := w.saveBatch(ctx, b); err != nil {
 					return err
 				}
 				b = b[:0]
@@ -167,7 +204,7 @@ func (w *writer) Close() {
 	}
 }
 
-func newWriter(db database, kv *kv, srcs map[string]*source, batch int, privacy bool, ext string, src *source) (*writer, error) {
+func newWriter(db database, graph graphWriter, kv *kv, srcs map[string]*source, batch int, privacy bool, ext string, src *source) (*writer, error) {
 	bar, err := newProgressBar("[3/3] Writing JSONs", 1)
 	if err != nil {
 		return nil, fmt.Errorf("could not create a progress bar: %w", err)
@@ -180,6 +217,7 @@ func newWriter(db database, kv *kv, srcs map[string]*source, batch int, privacy 
 	log := slog.New(slog.NewJSONHandler(f, nil))
 	return &writer{
 		db:      db,
+		graph:   graph,
 		kv:      kv,
 		srcs:    srcs,
 		batch:   batch,

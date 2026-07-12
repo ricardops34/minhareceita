@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"codeberg.org/cuducos/minha-receita/db"
+	"codeberg.org/cuducos/minha-receita/graph"
 	"codeberg.org/cuducos/minha-receita/transform"
 	"github.com/spf13/cobra"
 )
@@ -24,6 +26,8 @@ var (
 	batchSize int
 	cleanUp   bool
 	noPrivacy bool
+	skipGraph bool
+	graphOnly bool
 )
 
 var transformCmd = &cobra.Command{
@@ -31,6 +35,16 @@ var transformCmd = &cobra.Command{
 	Short: "Transforms the CSV files into database records",
 	Long:  transformHelper,
 	RunE: func(_ *cobra.Command, _ []string) error {
+		if skipGraph && graphOnly {
+			return fmt.Errorf("cannot use both --skip-graph and --graph-only")
+		}
+		if graphOnly {
+			g, err := graph.NewWriter(graphPath)
+			if err != nil {
+				return err
+			}
+			return transform.Transform(dir, nil, g, batchSize, !noPrivacy)
+		}
 		args.SetURI(uri)
 		db, err := loadDatabase(&args)
 		if err != nil {
@@ -45,7 +59,14 @@ var transformCmd = &cobra.Command{
 				return err
 			}
 		}
-		return transform.Transform(dir, db, batchSize, !noPrivacy)
+		if skipGraph {
+			return transform.Transform(dir, db, nil, batchSize, !noPrivacy)
+		}
+		g, err := graph.NewWriter(graphPath)
+		if err != nil {
+			return err
+		}
+		return transform.Transform(dir, db, g, batchSize, !noPrivacy)
 	},
 }
 
@@ -72,6 +93,13 @@ func transformCLI() *cobra.Command {
 	}
 
 	transformCmd.Flags().BoolVarP(&cleanUp, "clean-up", "c", cleanUp, "drop & recreate the database table before starting")
+	pth := graph.DefaultGraphPath
+	if env := os.Getenv("GRAPH_PATH"); env != "" {
+		pth = env
+	}
+	transformCmd.Flags().StringVarP(&graphPath, "graph", "g", pth, "path for the graph data (directory or .tar.gz archive)")
+	transformCmd.Flags().BoolVar(&skipGraph, "skip-graph", skipGraph, "skip creating the graph database")
+	transformCmd.Flags().BoolVar(&graphOnly, "graph-only", graphOnly, "only create the graph database")
 	transformCmd.Flags().IntVarP(&batchSize, "batch-size", "b", batchSize, "size of the batch to save to the database")
 	transformCmd.Flags().BoolVarP(&noPrivacy, "no-privacy", "p", noPrivacy, "include email addresses, CPF and other PII in the JSON data")
 	transformCmd.Flags().BoolVarP(&args.PostgresLogged, "logged", "l", args.PostgresLogged, "avoids the disk overhead but writes slowly to the table (PostgreSQL only)")

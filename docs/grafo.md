@@ -1,6 +1,6 @@
 # Grafo (Experimental)
 
-O comando `graph` permite explorar as relações entre quadro societários e pessoas, tanto jurídicas quanto físicas.
+O comando `graph` permite criar uma API para explorar as relações entre quadro societários e pessoas, tanto jurídicas quanto físicas.
 
 !!! info "Funcionalidade experimental"
     Esta é uma funcionalidade experimental e pode sofrer alterações, inclusive ser retirada do ar sem aviso prévio.
@@ -10,16 +10,7 @@ O comando `graph` permite explorar as relações entre quadro societários e pes
 
 ## Como usar
 
-### Conceito de `id`
-
-Essa API usa uma `id` para identificar tanto pessoas físicas quanto pessoas jurídicas:
-
-* Para pessoas jurídicas, o identificador é o próprio CNPJ
-* Para pessoas físicas, o identificador é um campo de texto (pseudo) aleatório (um _hash_ MD5 do CPF e nome como constam nos dados públicos do CNPJ)
-
-### Consultar
-
-Para consultar as *relações de uma empresa ou de uma pessoa física*, use `GET /relacoes/<id>`.
+Para consultar as *relações de uma empresa ou de uma pessoa física*, use `GET /relacoes/<id>`, sendo que o valor de `id` é [o CNPJ para pessoas jurídicas, ou um _hash_ para as demais](./contributing/etl.md#chaves).
 
 ??? example "Exemplo de resposta para `GET /relacoes/33683111000280`"
     ```json
@@ -116,20 +107,19 @@ Para descobrir a *menor conexão entre duas pessoas físicas ou jurídicas*, use
 
 ## Rodando localmente
 
-Primeiro, com um banco de dados completo, crie os grafos com:
+Ao [carregar os dados no banco de dados](./servidor.md#tratamento-dos-dados) é criado um arquivo `graph.tar.gz` (por padrão em `data/`). Inicie o servidor da API de grafos com:
 
 ```console
-$ minha-receita graph create
+$ minha-receita graph
 ```
 
-Na sequência, inicia o servidor da API de grafos:
+Se o caminho apontar para um arquivo `graph.tar.gz`, a API o descompacta automaticamente para um diretório temporário antes de iniciar. Se apontar para um diretório (e.g. `graph.db/`), a API o utiliza diretamente.
+
+### Container
+
+A imagem do grafo precisa do arquivo de grafos gerado localmente. Utilize o argumento `GRAPH_PATH` para indicar o caminho do arquivo do grafo durante a construção da imagem:
 
 ```console
-$ minha-receita graph api
+$ docker build --target graph --build-arg GRAPH_PATH=./data/graph.tar.gz -t minha-receita-graph .
 ```
 
-Para criar a imagem do container:
-
-```console
-$ docker build --target graph --build-arg GRAPH_PATH=./graph.db -t minha-receita-graph .
-```

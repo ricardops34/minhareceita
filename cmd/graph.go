@@ -1,14 +1,11 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"strconv"
 
 	"codeberg.org/cuducos/minha-receita/graph"
-	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 )
 
@@ -19,58 +16,10 @@ var (
 
 var graphCmd = &cobra.Command{
 	Use:   "graph",
-	Short: "Manage the graph API",
-}
-
-var graphCreateCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Creates the graph index from the database",
-	RunE: func(_ *cobra.Command, _ []string) error {
-		args.SetURI(uri)
-		db, err := loadDatabase(&args)
-		if err != nil {
-			return fmt.Errorf("could not find database: %w", err)
-		}
-		defer db.Close()
-
-		ctx := context.Background()
-
-		slog.Info("Querying total relationship count from the main database")
-		t, err := db.RelationshipCount(ctx)
-		if err != nil {
-			return fmt.Errorf("could not get relationship count: %w", err)
-		}
-		slog.Info("Found relationships to process", "count", t)
-
-		bar := progressbar.NewOptions(
-			int(t),
-			progressbar.OptionSetDescription("Streaming & building relationships index"),
-			progressbar.OptionShowCount(),
-			progressbar.OptionShowElapsedTimeOnFinish(),
-			progressbar.OptionFullWidth(),
-			progressbar.OptionUseANSICodes(true),
-			progressbar.OptionOnCompletion(func() { fmt.Println() }),
-		)
-
-		if err := graph.Create(ctx, db, t, graphPath, bar); err != nil {
-			return fmt.Errorf("error creating graph index: %w", err)
-		}
-
-		slog.Info("Relationships index successfully created")
-		return nil
-	},
-}
-
-var graphApiCmd = &cobra.Command{
-	Use:   "api",
 	Short: "Spins up the graph API",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		if graphPath == "graph.db" {
-			if env := os.Getenv("GRAPH_DIR"); env != "" {
-				graphPath = env
-			} else if env := os.Getenv("GRAPH_FILE"); env != "" {
-				graphPath = env
-			} else if env := os.Getenv("KEYS_DIR"); env != "" {
+		if !cmd.Flags().Changed("graph") {
+			if env := os.Getenv("GRAPH_PATH"); env != "" {
 				graphPath = env
 			}
 		}
@@ -100,38 +49,30 @@ var graphApiCmd = &cobra.Command{
 }
 
 func graphCLI() *cobra.Command {
-	graphCreateCmd.Flags().StringVarP(
+	pth := graph.DefaultGraphPath
+	if env := os.Getenv("GRAPH_PATH"); env != "" {
+		pth = env
+	}
+	graphCmd.Flags().StringVarP(
 		&graphPath,
 		"graph",
 		"g",
-		"graph.db",
-		"directory path for the Badger key/value storage",
+		pth,
+		"path for the graph data (directory or .tar.gz archive)",
 	)
-	addDatabase(graphCreateCmd, &args)
-
-	graphApiCmd.Flags().StringVarP(
-		&graphPath,
-		"graph",
-		"g",
-		"graph.db",
-		"directory path for the Badger key/value storage",
-	)
-	graphApiCmd.Flags().StringVarP(
+	graphCmd.Flags().StringVarP(
 		&port,
 		"port",
 		"p",
 		"8000",
 		"HTTP server port",
 	)
-	graphApiCmd.Flags().IntVarP(
+	graphCmd.Flags().IntVarP(
 		&graphCacheSize,
 		"cache",
 		"c",
 		graph.DefaultCacheSize,
 		"max size in MB for the graph adjacency cache, use 0 to disable",
 	)
-
-	graphCmd.AddCommand(graphCreateCmd)
-	graphCmd.AddCommand(graphApiCmd)
 	return graphCmd
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"codeberg.org/cuducos/minha-receita/company"
+	"codeberg.org/cuducos/minha-receita/graph"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 )
@@ -78,6 +79,12 @@ type database interface {
 	MetaSave(string, string) error
 }
 
+type graphWriter interface {
+	Save(*company.Relationship) error
+	Close() error
+	Path() string
+}
+
 func sources() map[string]*source { // all but Estabelecimentos (this one is loaded later on)
 	srcs := []*source{
 		newCompanySrc("Cnaes", ';', false, false),
@@ -136,17 +143,19 @@ func postLoad(db database) error {
 	return nil
 }
 
-func Transform(dir string, db database, batch int, privacy bool) error {
+func Transform(dir string, db database, gw graphWriter, batch int, privacy bool) error {
 	ibgeMunicipalitiesURL, err := ibgeMunicipalitiesURL()
 	if err != nil {
 		return fmt.Errorf("could not discover ibge municipalities URL: %w", err)
 	}
-	return transform(dir, db, batch, privacy, ibgeMunicipalitiesURL)
+	return transform(dir, db, gw, batch, privacy, ibgeMunicipalitiesURL)
 }
 
-func transform(dir string, db database, batch int, privacy bool, ibgeMunicipalitiesURL string) error {
-	if err := db.PreLoad(); err != nil {
-		return err
+func transform(dir string, db database, gw graphWriter, batch int, privacy bool, ibgeMunicipalitiesURL string) error {
+	if db != nil {
+		if err := db.PreLoad(); err != nil {
+			return err
+		}
 	}
 	srcs := sources()
 	pth, err := findMainZIP(dir)
@@ -214,7 +223,7 @@ func transform(dir string, db database, batch int, privacy bool, ibgeMunicipalit
 		return fmt.Errorf("could not flush key-value storage: %w", err)
 	}
 	src := newCompanySrc("Estabelecimentos", ';', false, false)
-	w, err := newWriter(db, kv, srcs, batch, privacy, ext, src)
+	w, err := newWriter(db, gw, kv, srcs, batch, privacy, ext, src)
 	if err != nil {
 		return err
 	}
@@ -222,10 +231,26 @@ func transform(dir string, db database, batch int, privacy bool, ibgeMunicipalit
 	if err := w.write(ctx); err != nil {
 		return err
 	}
-	if err := postLoad(db); err != nil {
-		return err
+	if gw != nil {
+		if err := gw.Close(); err != nil {
+			return err
+		}
 	}
-	return saveUpdatedAt(db, strings.TrimSuffix(filepath.Base(pth), ".zip"))
+	g = errgroup.Group{}
+	if db != nil {
+		g.Go(func() error {
+			if err := postLoad(db); err != nil {
+				return err
+			}
+			return saveUpdatedAt(db, strings.TrimSuffix(filepath.Base(pth), ".zip"))
+		})
+	}
+	if gw != nil {
+		g.Go(func() error {
+			return graph.Compress(gw.Path())
+		})
+	}
+	return g.Wait()
 }
 
 func Cleanup() error {
