@@ -16,10 +16,9 @@ Convert the CSV files from the Federal Revenue for venues (Estabelecimentos*.zip
 group of files) into records in the database, 1 record per CNPJ, joining
 information from all other source CSV files.
 
-The transformation process is divided into three steps:
-1. Unarchive the bundled ZIP file for a given month/year
-2. Load relational data to a key-value store
-3. Load the full database using the key-value store
+The transformation process is divided into two steps:
+1. Load relational data to a key-value store
+2. Load the full database using the key-value store
 `
 
 var (

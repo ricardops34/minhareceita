@@ -83,9 +83,6 @@ func (w *writer) process(ctx context.Context, pth string) error {
 	if err := g.Wait(); err != nil {
 		return err
 	}
-	if e := os.Remove(pth); e != nil {
-		slog.Warn("could not remove", "path", pth, "error", e)
-	}
 	return nil
 }
 

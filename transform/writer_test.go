@@ -70,14 +70,14 @@ func TestWriteJSONs(t *testing.T) {
 			t.Errorf("expected no error closing badger, got %s", err)
 		}
 	}()
-	ext := loadAllTestSources(t, kv)
+	loadAllTestSources(t, kv)
 	db := &testDB{}
 	graph := &testGraph{}
 	if err := db.PreLoad(); err != nil {
 		t.Fatalf("expected no error calling PreLoad, got %s", err)
 	}
 	src := newCompanySrc("Estabelecimentos", ';', false, false)
-	w, err := newWriter(db, graph, kv, srcs, 8192, false, ext, src)
+	w, err := newWriter(db, graph, kv, srcs, 8192, false, testdataDir, src)
 	if err != nil {
 		t.Fatalf("expected no error creating writer, got %s", err)
 	}

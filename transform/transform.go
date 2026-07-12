@@ -143,7 +143,27 @@ func postLoad(db database) error {
 	return nil
 }
 
-func Transform(dir string, db database, gw graphWriter, batch int, privacy bool) error {
+func findUpdatedAt(dir string) (string, error) {
+	ls, err := os.ReadDir(dir)
+	if err != nil {
+		return "", fmt.Errorf("could not read directory %s: %w", dir, err)
+	}
+	var ym string
+	for _, e := range ls {
+		if e.IsDir() {
+			continue
+		}
+		if _, err := time.Parse("2006-01", e.Name()); err == nil {
+			ym = e.Name()
+		}
+	}
+	if ym != "" {
+		return ym, nil
+	}
+	return "", fmt.Errorf("could not find YYYY-MM file in %s", dir)
+}
+
+func Transform(dir string, db database, batch int, privacy bool) error {
 	ibgeMunicipalitiesURL, err := ibgeMunicipalitiesURL()
 	if err != nil {
 		return fmt.Errorf("could not discover ibge municipalities URL: %w", err)
@@ -158,9 +178,9 @@ func transform(dir string, db database, gw graphWriter, batch int, privacy bool,
 		}
 	}
 	srcs := sources()
-	pth, err := findMainZIP(dir)
+	u, err := findUpdatedAt(dir)
 	if err != nil {
-		return fmt.Errorf("could not find main zip file in %s: %w", dir, err)
+		return err
 	}
 	tmp, err := os.MkdirTemp("", fmt.Sprintf("minha-receita-%s-*", time.Now().Format("20060102150405")))
 	if err != nil {
@@ -171,17 +191,6 @@ func transform(dir string, db database, gw graphWriter, batch int, privacy bool,
 			slog.Warn("could not remove temporary directory", "path", tmp, "error", err)
 		}
 	}()
-	ext := filepath.Join(tmp, "extracted")
-	if err := os.Mkdir(ext, 0700); err != nil {
-		return fmt.Errorf("could not create extraction directory: %w", err)
-	}
-	bar, err := newProgressBar("[1/3] Extracting main archive", 1)
-	if err != nil {
-		return fmt.Errorf("could not create a progress bar: %w", err)
-	}
-	if err := unzipMainArchive(pth, ext, bar); err != nil {
-		return fmt.Errorf("could not extract %s: %w", pth, err)
-	}
 	kv, err := newBadger(tmp, false)
 	if err != nil {
 		return fmt.Errorf("could not create badger database: %w", err)
@@ -191,7 +200,7 @@ func transform(dir string, db database, gw graphWriter, batch int, privacy bool,
 			slog.Warn("could not close badger database", "error", err)
 		}
 	}()
-	bar, err = newProgressBar("[2/3] Loading data to key-value storage", len(srcs))
+	bar, err := newProgressBar("[1/2] Loading data to key-value storage", len(srcs))
 	if err != nil {
 		return fmt.Errorf("could not create a progress bar: %w", err)
 	}
@@ -202,9 +211,9 @@ func transform(dir string, db database, gw graphWriter, batch int, privacy bool,
 		g.Go(func() error {
 			switch src.kind {
 			case CompanySrc:
-				return loadCSVs(ctx, ext, src, bar, kv, true)
+				return loadCSVs(ctx, dir, src, bar, kv)
 			case TaxSrc:
-				return loadCSVs(ctx, dir, src, bar, kv, false)
+				return loadCSVs(ctx, dir, src, bar, kv)
 			case IBGESrc:
 				return loadIBGEMunicipalitiesFromURL(ctx, ibgeMunicipalitiesURL, src, bar, kv)
 			}
@@ -242,7 +251,7 @@ func transform(dir string, db database, gw graphWriter, batch int, privacy bool,
 			if err := postLoad(db); err != nil {
 				return err
 			}
-			return saveUpdatedAt(db, strings.TrimSuffix(filepath.Base(pth), ".zip"))
+			return saveUpdatedAt(db, u)
 		})
 	}
 	if gw != nil {
