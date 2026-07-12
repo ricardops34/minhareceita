@@ -164,8 +164,10 @@ func findUpdatedAt(dir string) (string, error) {
 }
 
 func Transform(dir string, db database, gw graphWriter, batch int, privacy bool) error {
-	if err := db.PreLoad(); err != nil {
-		return err
+	if db != nil {
+		if err := db.PreLoad(); err != nil {
+			return err
+		}
 	}
 	srcs := sources()
 	u, err := findUpdatedAt(dir)
