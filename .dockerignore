@@ -1,9 +1,9 @@
 .git/
 .github/
+compose.yml
+data/
 Dockerfile
+docs/
 LICENSE
 README.md
-data/
-docker-compose.yml
-docs/
 zensical.toml
