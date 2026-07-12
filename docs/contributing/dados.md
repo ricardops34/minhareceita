@@ -1,6 +1,6 @@
 # Dados e desenvolvimento
 
-Para utilizar o Minha Receita é preciso seguir os passos para [criar o próprio servidor](../servidor.md), mas como o processo todo de [ETL](etl.md) (o comando `transform`) demora demais, caso queira testar manualmente com uma **amostra** dos dados, utilize o comando `sample` para gerar arquivos limitados a 10 mil linhas (assim o processo todo roda em cerca de 1 minuto, por exemplo). Após [obter os dados](../servidor.md#dados):
+Para utilizar o Minha Receita é preciso seguir os passos para [criar o próprio servidor](../servidor.md), mas como o processo todo de [ETL](etl.md) (o comando `transform`) demora demais, caso queira testar manualmente com uma **amostra** dos dados, utilize o comando `sample` para gerar arquivos limitados a 10 mil linhas (assim o processo todo roda em cerca de 1 minuto, por exemplo). Após [baixar os dados](../servidor.md#dados):
 
 ```console
 $ ./minha-receita sample

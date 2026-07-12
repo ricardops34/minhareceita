@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -346,13 +347,7 @@ func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]db.Re
 			if len(res) < 16 {
 				for it.Seek(k); it.ValidForPrefix(k); it.Next() {
 					nid := string(it.Item().Key()[len(k):])
-					found := false
-					for _, v := range res {
-						if v == nid {
-							found = true
-							break
-						}
-					}
+					found := slices.Contains(res, nid)
 					if !found {
 						res = append(res, nid)
 					}

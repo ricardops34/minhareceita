@@ -21,7 +21,7 @@ import (
 )
 
 var multipleSpaces = regexp.MustCompile(`\s{2,}`)
-var yearMonthZipPattern = regexp.MustCompile(`^\d{4}-\d{2}\.zip$`)
+
 
 func removeNulChar(r rune) rune {
 	if r == '\x00' {
@@ -157,78 +157,7 @@ func (c *reader) readCSV(ctx context.Context, bar *progressbar.ProgressBar, kv *
 	return c.readFromReader(ctx, f, bar, kv)
 }
 
-func findMainZIP(dir string) (string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return "", fmt.Errorf("could not read directory %s: %w", dir, err)
-	}
-	for _, e := range entries {
-		if yearMonthZipPattern.MatchString(e.Name()) {
-			return filepath.Join(dir, e.Name()), nil
-		}
-	}
-	return "", fmt.Errorf("could not find YYYY-MM.zip in %s", dir)
-}
 
-func extractFile(z *zip.File, dir string, bar *progressbar.ProgressBar) error {
-	f, err := os.Create(filepath.Join(dir, filepath.Base(z.Name)))
-	if err != nil {
-		return fmt.Errorf("could not create file for %s: %w", z.Name, err)
-	}
-	defer func() {
-		if err := f.Close(); err != nil {
-			slog.Warn("could not close extracted file", "name", z.Name, "error", err)
-		}
-	}()
-	r, err := z.Open()
-	if err != nil {
-		return fmt.Errorf("could not open %s in archive: %w", z.Name, err)
-	}
-	defer func() {
-		if err := r.Close(); err != nil {
-			slog.Warn("could not close archive entry", "name", z.Name, "error", err)
-		}
-	}()
-	var dst io.Writer = f
-	if bar != nil {
-		dst = io.MultiWriter(f, bar)
-	}
-	if _, err := io.Copy(dst, r); err != nil {
-		return fmt.Errorf("could not extract %s: %w", z.Name, err)
-	}
-	return nil
-}
-
-func unzipMainArchive(pth, dir string, bar *progressbar.ProgressBar) error {
-	a, err := zip.OpenReader(pth)
-	if err != nil {
-		return fmt.Errorf("could not open %s: %w", pth, err)
-	}
-	defer func() {
-		if err := a.Close(); err != nil {
-			slog.Warn("could not close archive", "path", pth, "error", err)
-		}
-	}()
-	if bar != nil {
-		var n int64
-		for _, z := range a.File {
-			if !z.FileInfo().IsDir() {
-				n += int64(z.UncompressedSize64)
-			}
-		}
-		bar.AddMax64(n - 1) // -1 to compensate for the initial max=1 from newProgressBar
-	}
-	var g errgroup.Group
-	for _, z := range a.File {
-		if z.FileInfo().IsDir() {
-			continue
-		}
-		g.Go(func() error {
-			return extractFile(z, dir, bar)
-		})
-	}
-	return g.Wait()
-}
 
 func loadIBGEMunicipalitiesFromURL(ctx context.Context, url string, src *source, bar *progressbar.ProgressBar, kv *kv) error {
 	if bar != nil {
@@ -261,7 +190,7 @@ func loadIBGEMunicipalitiesFromURL(ctx context.Context, url string, src *source,
 	return r.readFromReader(ctx, resp.Body, bar, kv)
 }
 
-func loadCSVs(ctx context.Context, dir string, src *source, bar *progressbar.ProgressBar, kv *kv, del bool) error {
+func loadCSVs(ctx context.Context, dir string, src *source, bar *progressbar.ProgressBar, kv *kv) error {
 	if bar != nil {
 		defer func() {
 			bar.AddMax(-1) // compensate for the extra byte added when creating the bar
@@ -294,11 +223,7 @@ func loadCSVs(ctx context.Context, dir string, src *source, bar *progressbar.Pro
 				if err != nil {
 					return err
 				}
-				if del {
-					if e := os.Remove(pth); e != nil {
-						slog.Warn("could not remove", "path", pth, "error", e)
-					}
-				}
+
 				return nil
 			})
 		}

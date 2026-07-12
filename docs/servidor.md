@@ -41,17 +41,24 @@ $ minha-receita provision web root@200.100.0.1
 
 ## Dados
 
-Os dados são disponibilizados mensalmente pela [Receita Federal](https://dados.gov.br/dados/conjuntos-dados/cadastro-nacional-da-pessoa-juridica-cnpj). Para o comando `transform` funcionar, é necessário um diretório contendo:
+Os dados são disponibilizados mensalmente pela [Receita Federal](https://dados.gov.br/dados/conjuntos-dados/cadastro-nacional-da-pessoa-juridica-cnpj). O comando `download` baixa os arquivos diretamente da Receita Federal, mais um arquivo do Tesouro Nacional com o código dos municípios do IBGE.
 
-* o arquivo `YYYY-MM.zip` da Receita Federal com os dados do CNPJ
-* os arquivos de regime tributário com prefixo `entidades-*.zip`
+O comando requer o mês e ano no formato `YYYY-MM` e pode ser utilizado com a opção `--directory` (ou `-d`) com o diretório onde serão salvos os arquivos (o padrão é `data/`).
 
-A fonte oficial desses arquivos é sempre o [Portal de Dados Abertos](https://dados.gov.br) do governo federal:
+### Exemplos de uso
 
-1. Busque por _CPNJ_ e escolha _Cadastro Nacional da Pessoa Jurídica - CNPJ_
-2. Na aba _Recursos_ os arquivos necessários são encontrados em:
-    * Inscrições no CNPJ (`YYYY-MM.zip`)
-    * Regimes Tributários (`entidades-*.zip`)
+Sem Docker:
+
+```console
+$ minha-receita download 2026-06
+$ minha-receita download 2026-06 -d /mnt/data/
+```
+
+Com Docker:
+
+```console
+$ docker compose run --rm minha-receita download 2026-06 --directory /mnt/data/
+```
 
 ## Tratamento dos dados
 

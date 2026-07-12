@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/public.php/webdav/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:displayname>ECF</d:displayname>
+        <d:resourcetype><d:collection/></d:resourcetype>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/public.php/webdav/entidades-imunes-e-isentas.zip</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:displayname>entidades-imunes-e-isentas.zip</d:displayname>
+        <d:getcontentlength>11228730</d:getcontentlength>
+        <d:resourcetype/>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/public.php/webdav/entidades-lucro-arbitrado.zip</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:displayname>entidades-lucro-arbitrado.zip</d:displayname>
+        <d:getcontentlength>66389</d:getcontentlength>
+        <d:resourcetype/>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/public.php/webdav/entidades-lucro-presumido.zip</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:displayname>entidades-lucro-presumido.zip</d:displayname>
+        <d:getcontentlength>37913801</d:getcontentlength>
+        <d:resourcetype/>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/public.php/webdav/entidades-lucro-real.zip</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:displayname>entidades-lucro-real.zip</d:displayname>
+        <d:getcontentlength>11063921</d:getcontentlength>
+        <d:resourcetype/>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
