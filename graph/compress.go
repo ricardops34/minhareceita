@@ -1,9 +1,9 @@
 package graph
 
 import (
-	"errors"
 	"archive/tar"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
