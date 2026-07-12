@@ -129,17 +129,27 @@ func saveUpdatedAt(db database, date string) error {
 	return db.MetaSave("updated-at", date)
 }
 
-func postLoad(db database) error {
-	slog.Info("Consolidating the database…")
+func postLoad(db database, wait <-chan struct{}) error {
+	logs := make(chan string, 4) // so we have room for the 4 logs below
+	go func() {
+		if wait != nil {
+			<-wait
+		}
+		for msg := range logs {
+			slog.Info(msg)
+		}
+	}()
+	logs <- "Consolidating the database…"
 	if err := db.PostLoad(); err != nil {
 		return err
 	}
-	slog.Info("Database consolidated!")
-	slog.Info("Creating indexes…")
+	logs <- "Database consolidated!"
+	logs <- "Creating indexes…"
 	if err := db.CreateExtraIndexes(extraIndexes[:]); err != nil {
 		return err
 	}
-	slog.Info("Indexes created!")
+	logs <- "Indexes created!"
+	close(logs)
 	return nil
 }
 
@@ -238,20 +248,25 @@ func Transform(dir string, db database, gw graphWriter, batch int, privacy bool)
 		}
 	}
 	g = errgroup.Group{}
+	wait := make(chan struct{}) // avoid breaking the compress graph progress bar
 	if db != nil {
-		g.Go(func() error {
-			if err := postLoad(db); err != nil {
-				return err
-			}
-			return saveUpdatedAt(db, u)
-		})
+		g.Go(func() error { return postLoad(db, wait) })
 	}
 	if gw != nil {
 		g.Go(func() error {
+			defer close(wait)
 			return graph.Compress(gw.Path())
 		})
+	} else {
+		close(wait)
 	}
-	return g.Wait()
+	if err := g.Wait(); err != nil {
+		return err
+	}
+	if db != nil {
+		return saveUpdatedAt(db, u)
+	}
+	return nil
 }
 
 func Cleanup() error {
