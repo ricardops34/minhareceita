@@ -172,8 +172,7 @@ func Decompress(pth string) (string, error) {
 			return "", fmt.Errorf("could not create file %s: %w", target, err)
 		}
 		if _, err := io.Copy(out, t); err != nil {
-			out.Close()
-			return "", fmt.Errorf("could not write file %s: %w", target, err)
+			return "", fmt.Errorf("could not write file %s: %w", target, errors.Join(err, out.Close()))
 		}
 		if err := out.Close(); err != nil {
 			slog.Warn("could not close file", "path", target, "error", err)
