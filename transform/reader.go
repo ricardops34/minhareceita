@@ -22,7 +22,6 @@ import (
 
 var multipleSpaces = regexp.MustCompile(`\s{2,}`)
 
-
 func removeNulChar(r rune) rune {
 	if r == '\x00' {
 		return -1
@@ -156,8 +155,6 @@ func (c *reader) readCSV(ctx context.Context, bar *progressbar.ProgressBar, kv *
 	}
 	return c.readFromReader(ctx, f, bar, kv)
 }
-
-
 
 func loadIBGEMunicipalitiesFromURL(ctx context.Context, url string, src *source, bar *progressbar.ProgressBar, kv *kv) error {
 	if bar != nil {

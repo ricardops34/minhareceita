@@ -60,7 +60,7 @@ func downloadFederalRevenue(c *webdav, ym, dir string) error {
 	}
 	bar := progressbar.NewOptions(
 		int(total),
-		progressbar.OptionSetDescription(fmt.Sprintf("Downloading %s", ym)),
+		progressbar.OptionSetDescription("Downloading files from the Federal Revenue…"),
 		progressbar.OptionShowBytes(true),
 		progressbar.OptionShowCount(),
 		progressbar.OptionShowElapsedTimeOnFinish(),
@@ -102,20 +102,35 @@ func downloadTaxRegime(c *webdav, dir string) error {
 	if err != nil {
 		return fmt.Errorf("could not list tax regime files: %w", err)
 	}
-	ok := make(map[string]bool)
+	sz := make(map[string]int64)
 	for _, e := range ls {
 		if isZipFile(e) {
-			ok[e.DisplayName] = true
+			sz[e.DisplayName] = e.ContentLength
 		}
 	}
 	var todo []string
+	var total int64
 	for _, f := range taxRegimeFiles {
-		if ok[f] {
+		if s, ok := sz[f]; ok {
 			todo = append(todo, f)
+			total += s
 		}
 	}
 	if len(todo) == 0 {
 		return fmt.Errorf("no tax regime files found")
+	}
+	bar := progressbar.NewOptions(
+		int(total),
+		progressbar.OptionSetDescription("Downloading tax regime files from the Federal Revenue…"),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionShowCount(),
+		progressbar.OptionShowElapsedTimeOnFinish(),
+		progressbar.OptionFullWidth(),
+		progressbar.OptionUseANSICodes(true),
+		progressbar.OptionOnCompletion(func() { fmt.Println() }),
+	)
+	if err := bar.RenderBlank(); err != nil {
+		return fmt.Errorf("could not start progress bar: %w", err)
 	}
 	var g errgroup.Group
 	for _, n := range todo {
@@ -131,7 +146,7 @@ func downloadTaxRegime(c *webdav, dir string) error {
 					slog.Warn("could not close file", "file", n, "error", err)
 				}
 			}()
-			_, err = c.download(n, f)
+			_, err = c.download(n, io.MultiWriter(f, bar))
 			if err != nil {
 				return fmt.Errorf("could not download %s: %w", n, err)
 			}
@@ -143,7 +158,7 @@ func downloadTaxRegime(c *webdav, dir string) error {
 }
 
 func downloadNationalTreasure(dir string) error {
-	slog.Info("Downloading tabmun from the National Treasure…")
+	slog.Info("Downloading IBGE codes from the National Treasure…")
 	urls, err := ckanURLs(nationalTreasureBase, nationalTreasurePkgID)
 	if err != nil {
 		return fmt.Errorf("error gathering resources for national treasure: %w", err)
@@ -176,18 +191,16 @@ func Download(dir, ym string) error {
 	if !i.IsDir() {
 		return fmt.Errorf("%s is not a directory", dir)
 	}
-	r := newClient(cnpjToken)
-	slog.Info("Downloading CNPJ files from the Federal Revenue…", "month", ym)
-	if err := downloadFederalRevenue(r, ym, dir); err != nil {
+	w := newClient(cnpjToken)
+	if err := downloadFederalRevenue(w, ym, dir); err != nil {
 		return fmt.Errorf("error downloading CNPJ files: %w", err)
 	}
-	t := newClient(taxRegimeToken)
+	w = newClient(taxRegimeToken)
+	if err := downloadTaxRegime(w, dir); err != nil {
+		return fmt.Errorf("error downloading tax regime files: %w", err)
+	}
 	if err := downloadNationalTreasure(dir); err != nil {
 		return fmt.Errorf("error downloading national treasure files: %w", err)
-	}
-	slog.Info("Downloading tax regime files from the Federal Revenue…")
-	if err := downloadTaxRegime(t, dir); err != nil {
-		return fmt.Errorf("error downloading tax regime files: %w", err)
 	}
 	ls, err := os.ReadDir(dir)
 	if err == nil {
@@ -195,7 +208,9 @@ func Download(dir, ym string) error {
 			if !e.IsDir() {
 				if _, err := time.Parse("2006-01", e.Name()); err == nil {
 					if e.Name() != ym {
-						os.Remove(filepath.Join(dir, e.Name()))
+						if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
+							slog.Warn("could not remove old year-month file", "file", e.Name(), "error", err)
+						}
 					}
 				}
 			}
