@@ -97,8 +97,8 @@ func transformCLI() *cobra.Command {
 		pth = env
 	}
 	transformCmd.Flags().StringVarP(&graphPath, "graph", "g", pth, "path for the graph data (directory or .tar.gz archive)")
-	transformCmd.Flags().BoolVar(&skipGraph, "skip-graph", skipGraph, "skip creating the graph database")
-	transformCmd.Flags().BoolVar(&graphOnly, "graph-only", graphOnly, "only create the graph database")
+	transformCmd.Flags().BoolVarP(&skipGraph, "skip-graph", "k", skipGraph, "skip creating the graph database")
+	transformCmd.Flags().BoolVarP(&graphOnly, "graph-only", "o", graphOnly, "only create the graph database")
 	transformCmd.Flags().IntVarP(&batchSize, "batch-size", "b", batchSize, "size of the batch to save to the database")
 	transformCmd.Flags().BoolVarP(&noPrivacy, "no-privacy", "p", noPrivacy, "include email addresses, CPF and other PII in the JSON data")
 	transformCmd.Flags().BoolVarP(&args.PostgresLogged, "logged", "l", args.PostgresLogged, "avoids the disk overhead but writes slowly to the table (PostgreSQL only)")
