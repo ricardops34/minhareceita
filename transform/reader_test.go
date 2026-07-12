@@ -2,20 +2,10 @@ package transform
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
-	"path/filepath"
 	"testing"
 )
 
 const testdataDir = "../testdata"
-
-func testIBGEMunicipalitiesServer(t *testing.T) *httptest.Server {
-	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join(testdataDir, "tabmun.csv"))
-	}))
-}
 
 func TestLoadCompanyCSVs(t *testing.T) {
 	srcs := sources()
@@ -100,34 +90,5 @@ func TestLoadCSVs(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestLoadIBGEMunicipalitiesFromURL(t *testing.T) {
-	srcs := sources()
-	src := srcs["tab"]
-	ts := testIBGEMunicipalitiesServer(t)
-	defer ts.Close()
-
-	ctx := context.Background()
-	kv, err := newBadger(t.TempDir(), false)
-	if err != nil {
-		t.Fatalf("expected no error creating badger, got %s", err)
-	}
-	defer func() {
-		if err := kv.db.Close(); err != nil {
-			t.Errorf("expected no error closing badger, got %s", err)
-		}
-	}()
-	if err := loadIBGEMunicipalitiesFromURL(ctx, ts.URL, src, nil, kv); err != nil {
-		t.Fatalf("expected no error loading municipalities, got %s", err)
-	}
-	key := src.keyPrefixFor("9701")
-	got, err := kv.getPrefix(key)
-	if err != nil {
-		t.Fatalf("expect no error getting %s, got %s", string(key), err)
-	}
-	if got == nil {
-		t.Fatalf("expected to find key %s, got nil", string(key))
 	}
 }

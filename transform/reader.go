@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -154,37 +153,6 @@ func (c *reader) readCSV(ctx context.Context, bar *progressbar.ProgressBar, kv *
 		bar.AddMax64(st.Size())
 	}
 	return c.readFromReader(ctx, f, bar, kv)
-}
-
-func loadIBGEMunicipalitiesFromURL(ctx context.Context, url string, src *source, bar *progressbar.ProgressBar, kv *kv) error {
-	if bar != nil {
-		defer func(b *progressbar.ProgressBar) {
-			b.AddMax(-1) // compensate for the extra byte added when creating the bar
-		}(bar)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("could not create request for %s: %w", url, err)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("could not download ibge municipalities from %s: %w", url, err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			slog.Warn("could not close ibge municipalities response body", "url", url, "error", err)
-		}
-	}()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("ibge municipalities download from %s returned %s", url, resp.Status)
-	}
-	if bar != nil && resp.ContentLength > 0 {
-		bar.AddMax64(resp.ContentLength)
-	} else {
-		bar = nil
-	}
-	r := reader{url, src}
-	return r.readFromReader(ctx, resp.Body, bar, kv)
 }
 
 func loadCSVs(ctx context.Context, dir string, src *source, bar *progressbar.ProgressBar, kv *kv) error {

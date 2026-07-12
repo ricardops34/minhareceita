@@ -109,7 +109,6 @@ func (w *writer) saveBatch(ctx context.Context, b []company.Company) error {
 			s, sctx := errgroup.WithContext(ctx)
 			s.SetLimit(1024) // arbitrary (avoid spinning so many goroutines)
 			for r := range ch {
-				r := r
 				s.Go(func() error {
 					select {
 					case <-sctx.Done():
