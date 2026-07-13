@@ -3,6 +3,8 @@ package graph
 import (
 	"context"
 	"net/http"
+
+	"codeberg.org/cuducos/minha-receita/metrics"
 )
 
 type graphRequestKey struct{}
@@ -45,9 +47,9 @@ func bandwidthMiddleware(next http.Handler) http.Handler {
 
 func registerBandwidth(e, m string, reqBytes, respBytes int) {
 	if reqBytes > 0 {
-		requestBytes.WithLabelValues(m, e).Add(float64(reqBytes))
+		metrics.RequestBytes.WithLabelValues(m, e).Add(float64(reqBytes))
 	}
 	if respBytes > 0 {
-		responseBytes.WithLabelValues(m, e).Add(float64(respBytes))
+		metrics.ResponseBytes.WithLabelValues(m, e).Add(float64(respBytes))
 	}
 }

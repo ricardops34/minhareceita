@@ -17,6 +17,7 @@ import (
 
 	"codeberg.org/cuducos/minha-receita/bloom"
 	"codeberg.org/cuducos/minha-receita/db"
+	"codeberg.org/cuducos/minha-receita/metrics"
 	"github.com/klauspost/compress/gzhttp"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"tangled.org/cuducos.me/go-cnpj"
@@ -78,39 +79,39 @@ func (app *api) messageResponse(w http.ResponseWriter, s int, m string) {
 	}
 }
 
-func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request, i int64) {
+func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request, i time.Time) {
 	w.Header().Set("Content-type", "application/json")
 	if !cnpj.IsValid(pth) {
 		app.messageResponse(w, http.StatusBadRequest, fmt.Sprintf("CNPJ %s inválido.", safeCNPJ(pth[1:])))
-		registerMetric("singleCompany", r.Method, http.StatusBadRequest, i)
+		metrics.RegisterMetric("singleCompany", r.Method, http.StatusBadRequest, i)
 		return
 	}
 	id := cnpj.Unmask(pth)
 	if app.cache != nil {
 		if s, ok := app.cache.get(id); ok {
-			cacheHits.Inc()
+			metrics.CacheHits.Inc()
 			if len(s) == 0 {
 				app.messageResponse(w, http.StatusNotFound, fmt.Sprintf("CNPJ %s não encontrado.", cnpj.Mask(pth)))
-				registerMetric("singleCompany", r.Method, http.StatusNotFound, i)
+				metrics.RegisterMetric("singleCompany", r.Method, http.StatusNotFound, i)
 				return
 			}
 			w.WriteHeader(http.StatusOK)
 			if _, err := w.Write(s); err != nil {
 				slog.Error("error responding to cached single company request", "request", r, "error", err)
 			}
-			registerMetric("singleCompany", r.Method, http.StatusOK, i)
+			metrics.RegisterMetric("singleCompany", r.Method, http.StatusOK, i)
 			return
 		}
-		cacheMisses.Inc()
+		metrics.CacheMisses.Inc()
 	}
 	if app.check != nil && app.check.Ready() {
 		ok, err := app.check.Exists(id)
 		if err != nil {
 			slog.Error("could not check bloom filter", "cnpj", id, "error", err)
 		} else if !ok {
-			bloomFilterEarlyExits.Inc()
+			metrics.BloomFilterEarlyExits.Inc()
 			app.messageResponse(w, http.StatusNotFound, fmt.Sprintf("CNPJ %s não encontrado.", cnpj.Mask(pth)))
-			registerMetric("singleCompany", r.Method, http.StatusNotFound, i)
+			metrics.RegisterMetric("singleCompany", r.Method, http.StatusNotFound, i)
 			return
 		}
 	}
@@ -121,13 +122,13 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 				app.cache.set(id, nil)
 			}
 			app.messageResponse(w, http.StatusNotFound, fmt.Sprintf("CNPJ %s não encontrado.", cnpj.Mask(pth)))
-			registerMetric("singleCompany", r.Method, http.StatusNotFound, i)
+			metrics.RegisterMetric("singleCompany", r.Method, http.StatusNotFound, i)
 			return
 		}
 		slog.Error("error retrieving company", "cnpj", pth, "error", err)
 		w.Header().Set("Cache-Control", "no-store")
 		app.messageResponse(w, http.StatusServiceUnavailable, "Serviço temporariamente indisponível, tente novamente.")
-		registerMetric("singleCompany", r.Method, http.StatusServiceUnavailable, i)
+		metrics.RegisterMetric("singleCompany", r.Method, http.StatusServiceUnavailable, i)
 		return
 	}
 	if app.cache != nil {
@@ -137,10 +138,10 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 	if _, err := w.Write(s); err != nil {
 		slog.Error("error responding to successful single company request", "request", r, "error", err)
 	}
-	registerMetric("singleCompany", r.Method, http.StatusOK, i)
+	metrics.RegisterMetric("singleCompany", r.Method, http.StatusOK, i)
 }
 
-func (app *api) paginatedSearch(q *db.Query, w http.ResponseWriter, r *http.Request, i int64) {
+func (app *api) paginatedSearch(q *db.Query, w http.ResponseWriter, r *http.Request, i time.Time) {
 	w.Header().Set("Content-type", "application/json")
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -160,24 +161,24 @@ func (app *api) paginatedSearch(q *db.Query, w http.ResponseWriter, r *http.Requ
 			}
 		}
 		app.messageResponse(w, http.StatusRequestTimeout, b.String())
-		registerMetric("paginatedSearch", r.Method, http.StatusRequestTimeout, i)
+		metrics.RegisterMetric("paginatedSearch", r.Method, http.StatusRequestTimeout, i)
 		return
 	}
 	if err != nil {
 		slog.Error("paginated search error", "error", err, "query", q)
 		app.messageResponse(w, http.StatusNotFound, "Erro inesperado na busca.")
-		registerMetric("paginatedSearch", r.Method, http.StatusNotFound, i)
+		metrics.RegisterMetric("paginatedSearch", r.Method, http.StatusNotFound, i)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(s); err != nil {
 		slog.Error("error responding to successful paginated search request", "query", q, "request", r, "error", err)
 	}
-	registerMetric("paginatedSearch", r.Method, http.StatusOK, i)
+	metrics.RegisterMetric("paginatedSearch", r.Method, http.StatusOK, i)
 }
 
 func (app *api) companyHandler(w http.ResponseWriter, r *http.Request) {
-	i := time.Now().UnixMilli()
+	i := time.Now()
 	w.Header().Set("Cache-Control", cacheControl)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
@@ -188,11 +189,11 @@ func (app *api) companyHandler(w http.ResponseWriter, r *http.Request) {
 		break
 	case http.MethodOptions:
 		w.WriteHeader(http.StatusOK)
-		registerMetric("earlyReturn", r.Method, http.StatusOK, i)
+		metrics.RegisterMetric("earlyReturn", r.Method, http.StatusOK, i)
 		return
 	default:
 		app.messageResponse(w, http.StatusMethodNotAllowed, "Essa URL aceita apenas o método GET.")
-		registerMetric("earlyReturn", r.Method, http.StatusMethodNotAllowed, i)
+		metrics.RegisterMetric("earlyReturn", r.Method, http.StatusMethodNotAllowed, i)
 		return
 	}
 	pth := r.URL.Path
@@ -200,7 +201,7 @@ func (app *api) companyHandler(w http.ResponseWriter, r *http.Request) {
 		q := db.NewQuery(r.URL.Query())
 		if q == nil {
 			http.Redirect(w, r, "https://docs.minhareceita.org", http.StatusFound)
-			registerMetric("redirectedToDocs", r.Method, http.StatusFound, i)
+			metrics.RegisterMetric("redirectedToDocs", r.Method, http.StatusFound, i)
 			return
 		}
 		app.paginatedSearch(q, w, r, i)
@@ -210,32 +211,32 @@ func (app *api) companyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *api) updatedHandler(w http.ResponseWriter, r *http.Request) {
-	i := time.Now().UnixMilli()
+	i := time.Now()
 	if r.Method != http.MethodGet {
 		app.messageResponse(w, http.StatusMethodNotAllowed, "Essa URL aceita apenas o método GET.")
-		registerMetric("updated", r.Method, http.StatusMethodNotAllowed, i)
+		metrics.RegisterMetric("updated", r.Method, http.StatusMethodNotAllowed, i)
 		return
 	}
 	s, err := app.db.MetaRead("updated-at")
 	if err != nil || s == "" {
 		app.messageResponse(w, http.StatusInternalServerError, "Erro buscando data de atualização.")
-		registerMetric("updated", r.Method, http.StatusInternalServerError, i)
+		metrics.RegisterMetric("updated", r.Method, http.StatusInternalServerError, i)
 		return
 	}
 	w.Header().Set("Cache-Control", cacheControl)
 	app.messageResponse(w, http.StatusOK, s)
-	registerMetric("updated", r.Method, http.StatusOK, i)
+	metrics.RegisterMetric("updated", r.Method, http.StatusOK, i)
 }
 
 func (app *api) healthHandler(w http.ResponseWriter, r *http.Request) {
-	i := time.Now().UnixMilli()
+	i := time.Now()
 	if r.Method != http.MethodHead && r.Method != http.MethodGet {
 		app.messageResponse(w, http.StatusMethodNotAllowed, "Essa URL aceita apenas os métodos GET e HEAD.")
-		registerMetric("health", r.Method, http.StatusMethodNotAllowed, i)
+		metrics.RegisterMetric("health", r.Method, http.StatusMethodNotAllowed, i)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	registerMetric("health", r.Method, http.StatusOK, i)
+	metrics.RegisterMetric("health", r.Method, http.StatusOK, i)
 }
 
 func (app *api) allowedHostWrapper(h func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
@@ -272,8 +273,8 @@ func Serve(db database, p string, cacheSize, bloomSize int) error {
 				slog.Error("could not Initialize bloom filter", "error", err)
 			}
 			if app.check.Ready() {
-				bloomFilterBuildDuration.Set(time.Since(ini).Seconds())
-				bloomFilterReady.Set(1)
+				metrics.BloomFilterBuildDuration.Set(time.Since(ini).Seconds())
+				metrics.BloomFilterReady.Set(1)
 			}
 		}()
 	}

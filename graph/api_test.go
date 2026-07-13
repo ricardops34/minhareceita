@@ -231,11 +231,11 @@ func TestAPI(t *testing.T) {
 		}
 
 		got := string(b)
-		if !strings.Contains(got, "total_requests") {
-			t.Errorf("expected total_requests metric in response, got:\n%s", got)
+		if !strings.Contains(got, "requests_total") {
+			t.Errorf("expected requests_total metric in response, got:\n%s", got)
 		}
-		if !strings.Contains(got, "request_duration") {
-			t.Errorf("expected request_duration metric in response, got:\n%s", got)
+		if !strings.Contains(got, "request_duration_seconds") {
+			t.Errorf("expected request_duration_seconds metric in response, got:\n%s", got)
 		}
 	})
 }

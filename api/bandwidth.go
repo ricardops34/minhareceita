@@ -1,6 +1,10 @@
 package api
 
-import "net/http"
+import (
+	"net/http"
+
+	"codeberg.org/cuducos/minha-receita/metrics"
+)
 
 // bandwidthResponseWriter wraps http.ResponseWriter to count bytes written
 // to the response body for bandwidth tracking.
@@ -40,6 +44,6 @@ func bandwidthMiddleware(next http.Handler) http.Handler {
 }
 
 func registerBandwidth(e, m string, reqBytes, respBytes int) {
-	requestBytes.WithLabelValues(m, e).Add(float64(reqBytes))
-	responseBytes.WithLabelValues(m, e).Add(float64(respBytes))
+	metrics.RequestBytes.WithLabelValues(m, e).Add(float64(reqBytes))
+	metrics.ResponseBytes.WithLabelValues(m, e).Add(float64(respBytes))
 }

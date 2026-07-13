@@ -1,4 +1,4 @@
-package api
+package metrics
 
 import (
 	"fmt"
@@ -11,47 +11,56 @@ import (
 var (
 	metricLabels    = []string{"method", "status_code", "endpoint"}
 	bandwidthLabels = []string{"method", "endpoint"}
-	requestCount    = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "total_requests",
+
+	RequestCount = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "requests_total",
 		Help: "The total number of requests served",
 	}, metricLabels)
-	requestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "request_duration",
-		Help:    "The duration of requests in milliseconds",
-		Buckets: []float64{1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 5000},
+
+	RequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "request_duration_seconds",
+		Help:    "The duration of requests in seconds",
+		Buckets: []float64{0.001, 0.002, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5},
 	}, metricLabels)
-	cacheHits = promauto.NewCounter(prometheus.CounterOpts{
+
+	CacheHits = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "cache_hits_total",
 		Help: "The total number of cache hits",
 	})
-	cacheMisses = promauto.NewCounter(prometheus.CounterOpts{
+
+	CacheMisses = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "cache_misses_total",
 		Help: "The total number of cache misses",
 	})
-	bloomFilterReady = promauto.NewGauge(prometheus.GaugeOpts{
+
+	BloomFilterReady = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "bloom_filter_ready",
 		Help: "1 when the CNPJ bloom filter is fully built, 0 otherwise",
 	})
-	bloomFilterEarlyExits = promauto.NewCounter(prometheus.CounterOpts{
+
+	BloomFilterEarlyExits = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "bloom_filter_early_exits_total",
 		Help: "Total 404s short-circuited by the bloom filter (never hit the DB)",
 	})
-	bloomFilterBuildDuration = promauto.NewGauge(prometheus.GaugeOpts{
+
+	BloomFilterBuildDuration = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "bloom_filter_build_duration_seconds",
 		Help: "How long it took to build the bloom filter (seconds)",
 	})
-	requestBytes = promauto.NewCounterVec(prometheus.CounterOpts{
+
+	RequestBytes = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "request_bytes_total",
 		Help: "The total number of bytes received in request bodies",
 	}, bandwidthLabels)
-	responseBytes = promauto.NewCounterVec(prometheus.CounterOpts{
+
+	ResponseBytes = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "response_bytes_total",
 		Help: "The total number of bytes sent in response bodies",
 	}, bandwidthLabels)
 )
 
-func registerMetric(e, m string, s int, i int64) {
+func RegisterMetric(e, m string, s int, i time.Time) {
 	c := fmt.Sprintf("%d", s)
-	requestCount.WithLabelValues(m, c, e).Inc()
-	requestDuration.WithLabelValues(m, c, e).Observe(float64(time.Now().UnixMilli() - i))
+	RequestCount.WithLabelValues(m, c, e).Inc()
+	RequestDuration.WithLabelValues(m, c, e).Observe(time.Since(i).Seconds())
 }
