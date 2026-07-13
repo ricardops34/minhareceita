@@ -22,7 +22,7 @@ Para fazer uma consulta usando a API web, acrescente o CNPJ a ser consultado ao 
 !!! important "Limites e disponibilidade"
     A API web não tem nenhuma [garantia de nível de serviço](https://pt.wikipedia.org/wiki/Acordo_de_n%C3%ADvel_de_servi%C3%A7o) e a única forma de aumentar sua disponibilidade e diminuir o tempo de resposta é com [contribuições mensais](https://apoia.se/minhareceita) ou contribuições pontuais via Pix (`d6ede813-6621-4df4-9a93-8d0108fd9b6a`).
 
-As [métricas de uso da API web são públicas](https://metrics.minhareceita.org), mas nenhum dado específico sobre cada requisição é coletado (por exemplo, qual CNPJ foi consultado, ou o IP de onde partiu a requisição).
+As [métricas de uso da API web são públicas](https://metrics.cuducos.me/d/minha-receita), mas nenhum dado específico sobre cada requisição é coletado (por exemplo, qual CNPJ foi consultado, ou o IP de onde partiu a requisição).
 
 ## Contato
 
