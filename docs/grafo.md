@@ -112,14 +112,3 @@ Ao [carregar os dados no banco de dados](./servidor.md#tratamento-dos-dados) é 
 ```console
 $ minha-receita graph
 ```
-
-Se o caminho apontar para um arquivo `graph.tar.gz`, a API o descompacta automaticamente para um diretório temporário antes de iniciar. Se apontar para um diretório (e.g. `graph.db/`), a API o utiliza diretamente.
-
-### Container
-
-A imagem do grafo precisa do arquivo de grafos gerado localmente. Utilize o argumento `GRAPH_PATH` para indicar o caminho do arquivo do grafo durante a construção da imagem:
-
-```console
-$ docker build --target graph --build-arg GRAPH_PATH=./data/graph.tar.gz -t minha-receita-graph .
-```
-

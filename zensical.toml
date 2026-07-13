@@ -14,7 +14,7 @@ nav = [
   "sobre-os-dados.md",
   {"Guia de Contribuição" = [
     "contributing/index.md",
-    "contributing/docker.md",
+    "contributing/containers.md",
     "contributing/dados.md",
     "contributing/etl.md",
     "contributing/documentacao.md",

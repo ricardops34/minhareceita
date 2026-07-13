@@ -1,8 +1,8 @@
-# Utilizando o Docker
+# Utilizando containers
 
 ## Apenas para o banco de dados
 
-Caso queira utilizar o Docker apenas para subir o banco de dados (recomendado), utilize:
+Caso queira utilizar containers apenas para subir o banco de dados (recomendado), utilize:
 
 ```console
 $ docker compose up -d postgres
@@ -30,12 +30,12 @@ As configurações padrão desses bancos são:
 | `postgres_test` | Testes | `TEST_POSTGRES_URL` | `postgres://minhareceita:minhareceita@localhost:5555/minhareceita?sslmode=disable` |
 | `mongo_test` | Testes | `TEST_MONGODB_URL` | `mongodb://minhareceita:minhareceita@localhost:27117/minhareceita?authSource=admin` |
 
-## Rodando o projeto todo com Docker
+## Rodando o projeto todo com containers
 
 !!! warning "Aviso"
-    O ETL não costuem funcionar com Docker. Mas, depois de carregar os dados, rodar o banco de dados e a API com Docker normalmente funciona.
+    O ETL não costuma funcionar com containers. Mas, depois de carregar os dados, rodar o banco de dados e a API com containers normalmente funciona.
 
-Se for utilizar Docker para rodar o projeto todo, copie o arquivo `.env.sample` como `.env` — e ajuste, se necessário.
+Se for utilizar containers para rodar o projeto todo, copie o arquivo `.env.sample` como `.env` — e ajuste, se necessário.
 
 O banco de dados de sua escolha (padrão, que persiste dados; ou de testes, que não persiste dados) tem que ser [iniciado isoladamente](#apenas-para-o-banco-de-dados).
 

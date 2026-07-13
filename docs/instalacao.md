@@ -2,9 +2,9 @@
 
 Existem três formas de rodar essa aplicação localmente:
 
-* ou com a imagem Docker
+* ou com a imagem de container
 * ou gerando o binário a partir do código fonte
-* ou com Docker Compose — apenas para desenvolvimento (não recomendado para o banco de dados completo)
+* ou com o `compose.yml` — apenas para desenvolvimento (não recomendado para o banco de dados completo)
 
 As duas últimas alternativas necessitam do código fonte. Você pode usar o Git para baixar o código do projeto:
 
@@ -29,16 +29,16 @@ Por exemplo, em um Postgres rodando em um servidor separado, a divisão é aprox
 ### Banco de dados
 
 * O banco de dados gerado utiliza cerca de 140 GB
-* Rodar o banco de dados localmente com Docker só é recomendado para desenvolvimento (não recomendado para o banco de dados completo)
+* Rodar o banco de dados localmente com containers só é recomendado para desenvolvimento (não recomendado para o banco de dados completo)
 
 #### Download e transformação dos dados
 
 * Os arquivos da Receita federal tem menos de 10 GB
 * O processo de importação utiliza uma estrutura temporária de cerca de 15 GB
 
-### Imagem Docker
+### Imagem de container
 
-* [Docker](https://www.docker.com/)
+* [Podman](https://podman.io/), [Docker](https://www.docker.com/) ou qualquer _runtime_ de container compatíveL
 
 Baixar a imagem com:
 
@@ -58,10 +58,9 @@ $ go get
 $ go build -o /usr/local/bin/minha-receita main.go
 ```
 
-### Docker Compose
+### Compose
 
-* [Docker](https://www.docker.com/)
-* [Docker Compose](https://docs.docker.com/compose/install/)
+* [Podman](https://podman.io/), [Docker](https://www.docker.com/) ou qualquer _runtime_ de container compatíveL com plugin `compose`
 * Arquivo `.env` (copie o `.env.sample` e ajuste caso necessário)
 
 Gere as imagens dos containers com:
@@ -70,9 +69,9 @@ Gere as imagens dos containers com:
 $ docker compose build
 ```
 
-## Imagem Docker
+## Imagem de container
 
-O `Dockerfile` define duas imagens a partir do mesmo arquivo: uma para a aplicação principal (API web, ETL, etc.) e outra para a API do grafo. Para escolher qual imagem construir, utilize a opção `--target` do `docker build`.
+O `Dockerfile` define duas imagens a partir do mesmo arquivo: uma para a aplicação principal (API web, ETL, etc.) e outra para a API do grafo. Para escolher qual imagem construir, utilize a opção `--target` do comando de build.
 
 Baixe a imagem pronta com:
 
@@ -93,7 +92,7 @@ Várias configurações podem ser passadas para a CLI, e elas estão documentada
 
 ### Exemplos
 
-#### Imagem Docker
+#### Imagem de container
 
 ```console
 $ docker run --rm atcr.io/cuducos.me/minha-receita:main --help
@@ -107,7 +106,7 @@ $ minha-receita --help
 $ minha-receita api --help
 ```
 
-#### Docker Compose
+#### Compose
 
 ```console
 $ docker compose run --rm minha-receita --help
@@ -124,6 +123,6 @@ Para facilitar a manutenção, algumas variáveis de ambiente podem ser utilizad
 | `PORT` | Porta na qual a API web ficará disponível |
 | `CACHE_SIZE` | Tamanho máximo do cache em MB |
 | `BLOOM_FILTER_SIZE` | Tamanho máximo do bloom filter em MB |
-| `GRAPH_PATH` | Localização do arquivo ou diretório do [grafo](grafo.md) |
+| `GRAPH_PATH` | Localização do arquivo do [grafo](grafo.md) |
 | `TEST_POSTGRES_URL` | URI de acesso ao banco de dados PostgreSQL para ser utilizado nos testes |
 | `TEST_MONGODB_URL` | URI de acesso ao banco de dados MongoDB para ser utilizado nos testes |

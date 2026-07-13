@@ -15,7 +15,7 @@ $ golanglint-ci run ./...
 $ go test --race ./...
 ```
 
-Os testes requerem uma instância de cada banco de dados implementado. Atualmente eles precisam ser configurados em `TEST_POSTGRES_URL` e `TEST_MONGODB_URL`, como no exemplo em `.env`, e podem ser [facilmente criados com o Docker Compose](docker.md).
+Os testes requerem uma instância de cada banco de dados implementado. Atualmente eles precisam ser configurados em `TEST_POSTGRES_URL` e `TEST_MONGODB_URL`, como no exemplo em `.env`, e podem ser [facilmente criados com o `compose.yml`](containers.md).
 
 O FoundationDB é uma exceção: por exigir a biblioteca C `libfdb_c` instalada no sistema, seu código fonte usa a _build tag_ `foundationdb`. Sem essa _tag_, o arquivo `db/foundationdb.go` é ignorado pelo compilador. Os testes do FoundationDB rodam contra um mock em memória — sem dependência externa. Para compilar ou testar com o FoundationDB:
 
