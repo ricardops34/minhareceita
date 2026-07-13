@@ -14,17 +14,27 @@ $ git clone https://codeberg.org/cuducos/minha-receita.git
 
 ## Requisitos e instalação
 
-É necessário cerca de 170Gb disponíveis de espaço em disco para armazenar os dados. Caso o banco de dados esteja em uma máquina separada, a divisão é mais ou menos 140Gb para as tabelas no banco de dados, 10Gb para os índices no banco de dados, e 20Gb para a máquina que vai fazer o download dos dados e transformá-los para carregar no banco de dados.
+É necessário cerca de 180 GB disponíveis de espaço em disco para armazenar os dados.
+
+Por exemplo, em um Postgres rodando em um servidor separado, a divisão é aproximadamente:
+
+* Banco de dados
+    * 140 GB para as tabelas
+    * 10 GB para os índices no banco de dados
+* Download e transformação dos dados:
+    * 8 GB para os downloads
+    * 15 GB de espaço temporário para o tratamento dos dados
+    * 7 GB para gerar o arquivo `graph.tar.gz` do [grafo](grafo.md)
 
 ### Banco de dados
 
-* O banco de dados gerado utiliza cerca de 140Gb
+* O banco de dados gerado utiliza cerca de 140 GB
 * Rodar o banco de dados localmente com Docker só é recomendado para desenvolvimento (não recomendado para o banco de dados completo)
 
 #### Download e transformação dos dados
 
-* Os arquivos da Receita federal tem menos de 10Gb
-* O processo de importação utiliza uma estrutura temporária de cerca de 15Gb
+* Os arquivos da Receita federal tem menos de 10 GB
+* O processo de importação utiliza uma estrutura temporária de cerca de 15 GB
 
 ### Imagem Docker
 
@@ -77,12 +87,6 @@ $ docker build --target main -t minha-receita .
 $ docker run -e DATABASE_URL=$DATABASE_URL -p 8000:8000 minha-receita
 ```
 
-A imagem do grafo precisa do banco de dados de grafos gerado localmente. Utilize o argumento `GRAPH_PATH` para indicar o caminho do arquivo do grafo durante a construção da imagem:
-
-```console
-$ docker build --target graph --build-arg GRAPH_PATH=./graph.db -t minha-receita-graph .
-```
-
 ## Execução e configurações
 
 Várias configurações podem ser passadas para a CLI, e elas estão documentadas no `--help` de cada comando da aplicação.
@@ -120,5 +124,6 @@ Para facilitar a manutenção, algumas variáveis de ambiente podem ser utilizad
 | `PORT` | Porta na qual a API web ficará disponível |
 | `CACHE_SIZE` | Tamanho máximo do cache em MB |
 | `BLOOM_FILTER_SIZE` | Tamanho máximo do bloom filter em MB |
+| `GRAPH_PATH` | Localização do arquivo ou diretório do [grafo](grafo.md) |
 | `TEST_POSTGRES_URL` | URI de acesso ao banco de dados PostgreSQL para ser utilizado nos testes |
 | `TEST_MONGODB_URL` | URI de acesso ao banco de dados MongoDB para ser utilizado nos testes |

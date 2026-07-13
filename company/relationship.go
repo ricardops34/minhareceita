@@ -1,15 +1,19 @@
-package db
+package company
 
-import "fmt"
+import (
+	"crypto/md5"
+	"fmt"
+	"log/slog"
+)
 
 // Relationship represents a connection between a company and a partner.
 type Relationship struct {
-	CompanyID   string `json:"cnpj" bson:"company_id"`
-	CompanyName string `json:"razao_social" bson:"company_name"`
-	PartnerID   string `json:"id" bson:"partner_id"`
-	PartnerName string `json:"nome" bson:"partner_name"`
-	PartnerCPF  string `json:"cpf,omitempty" bson:"partner_cnpf"`
-	PartnerType int    `json:"-" bson:"partner_type"`
+	CompanyID   string `json:"cnpj"`
+	CompanyName string `json:"razao_social"`
+	PartnerID   string `json:"id"`
+	PartnerName string `json:"nome"`
+	PartnerCPF  string `json:"cpf,omitempty"`
+	PartnerType int    `json:"-"`
 }
 
 // Custom Binary Layout for Relationship:
@@ -71,4 +75,36 @@ func (r *Relationship) Decode(b []byte) error {
 		}
 	}
 	return nil
+}
+
+// Relationships streams to a given channel.
+func (c *Company) Relationships(ch chan<- *Relationship) {
+	for _, p := range c.QuadroSocietario {
+		r := Relationship{
+			CompanyID:   c.CNPJ,
+			CompanyName: c.RazaoSocial,
+			PartnerName: p.NomeSocio,
+			PartnerType: *p.IdentificadorDeSocio,
+		}
+		switch r.PartnerType {
+		case 1: // legal entity: partner ID is the CNPJ
+			r.PartnerID = p.CNPJCPFDoSocio
+		case 2: // create hash for person and fill in CPF
+			s := fmt.Sprintf("%s%s", p.CNPJCPFDoSocio, p.NomeSocio)
+			r.PartnerID = fmt.Sprintf("%x", md5.Sum([]byte(s)))
+			r.PartnerCPF = p.CNPJCPFDoSocio
+		case 3: // create hash for international partner
+			var s string
+			if p.CodigoPais != nil {
+				s = fmt.Sprintf("%d%s", *p.CodigoPais, p.NomeSocio)
+			} else {
+				s = p.NomeSocio
+			}
+			r.PartnerID = fmt.Sprintf("%x", md5.Sum([]byte(s)))
+		default:
+			slog.Warn("unknown partner type", "value", r.PartnerType)
+			continue
+		}
+		ch <- &r
+	}
 }

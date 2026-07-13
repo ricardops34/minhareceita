@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"codeberg.org/cuducos/minha-receita/db"
+	"codeberg.org/cuducos/minha-receita/company"
 	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/ristretto/v2"
 	"github.com/klauspost/compress/gzhttp"
@@ -34,7 +34,14 @@ type Server struct {
 
 func NewServer(pth string, cacheSize int) (*Server, error) {
 	slog.Info("Starting graph server warm-up...")
-
+	if strings.HasSuffix(pth, ".tar.gz") {
+		slog.Info("Decompressing graph archive...", "path", pth)
+		d, err := Decompress(pth)
+		if err != nil {
+			return nil, fmt.Errorf("could not decompress graph archive: %w", err)
+		}
+		pth = d
+	}
 	slog.Info("Opening key/value storage...", "path", pth)
 	opt := badger.DefaultOptions(pth).
 		WithLoggingLevel(badger.WARNING).
@@ -72,8 +79,8 @@ func (s *Server) Close() {
 	}
 }
 
-func (s *Server) getRelations(id string) ([]db.Relationship, error) {
-	var out []db.Relationship
+func (s *Server) getRelations(id string) ([]company.Relationship, error) {
+	var out []company.Relationship
 
 	err := s.kv.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
@@ -115,7 +122,7 @@ func (s *Server) getRelations(id string) ([]db.Relationship, error) {
 		if err != nil {
 			return fmt.Errorf("failed to lookup metadata for entity %s: %w", id, err)
 		}
-		var m db.Relationship
+		var m company.Relationship
 		err = item.Value(func(val []byte) error {
 			return m.Decode(val)
 		})
@@ -124,7 +131,7 @@ func (s *Server) getRelations(id string) ([]db.Relationship, error) {
 		}
 
 		n := len(ps) + len(companies)
-		res := make([]db.Relationship, n)
+		res := make([]company.Relationship, n)
 
 		for i, nid := range ps {
 			k := append([]byte("meta:"), nid...)
@@ -134,12 +141,12 @@ func (s *Server) getRelations(id string) ([]db.Relationship, error) {
 			}
 
 			err = item.Value(func(val []byte) error {
-				var pm db.Relationship
+				var pm company.Relationship
 				if err := pm.Decode(val); err != nil {
 					return fmt.Errorf("failed to decode metadata for partner %s: %w", nid, err)
 				}
 
-				res[i] = db.Relationship{
+				res[i] = company.Relationship{
 					CompanyID:   id,
 					CompanyName: m.CompanyName,
 					PartnerID:   nid,
@@ -163,12 +170,12 @@ func (s *Server) getRelations(id string) ([]db.Relationship, error) {
 			}
 
 			err = item.Value(func(val []byte) error {
-				var cm db.Relationship
+				var cm company.Relationship
 				if err := cm.Decode(val); err != nil {
 					return fmt.Errorf("failed to decode metadata for company %s: %w", nid, err)
 				}
 
-				res[nxt+i] = db.Relationship{
+				res[nxt+i] = company.Relationship{
 					CompanyID:   nid,
 					CompanyName: cm.CompanyName,
 					PartnerID:   id,
@@ -195,9 +202,9 @@ func (s *Server) getRelations(id string) ([]db.Relationship, error) {
 
 var errNoConnection = errors.New("no connection found")
 
-func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]db.Relationship, error) {
+func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]company.Relationship, error) {
 	if src == dst {
-		return []db.Relationship{}, nil
+		return []company.Relationship{}, nil
 	}
 
 	type node struct {
@@ -205,7 +212,7 @@ func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]db.Re
 		parent *node
 	}
 
-	var path []db.Relationship
+	var path []company.Relationship
 
 	err := s.kv.View(func(txn *badger.Txn) error {
 		srcs := map[string]*node{src: {id: src}}
@@ -214,7 +221,7 @@ func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]db.Re
 		qsrc := []*node{srcs[src]}
 		qdst := []*node{dsts[dst]}
 
-		reconstruct := func(n1, n2 *node) ([]db.Relationship, error) {
+		reconstruct := func(n1, n2 *node) ([]company.Relationship, error) {
 			var left []*node
 			curr := n1
 			for curr.parent != nil {
@@ -239,7 +246,7 @@ func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]db.Re
 				uniq[n.id] = true
 			}
 
-			ns := make(map[string]db.Relationship)
+			ns := make(map[string]company.Relationship)
 
 			for id := range uniq {
 				k := append([]byte("meta:"), id...)
@@ -248,7 +255,7 @@ func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]db.Re
 					return nil, fmt.Errorf("failed to lookup name for path node %s: %w", id, err)
 				}
 				err = i.Value(func(val []byte) error {
-					var meta db.Relationship
+					var meta company.Relationship
 					if err := meta.Decode(val); err != nil {
 						return err
 					}
@@ -260,7 +267,7 @@ func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]db.Re
 				}
 			}
 
-			build := func(pid, nid string) (db.Relationship, error) {
+			build := func(pid, nid string) (company.Relationship, error) {
 				k := make([]byte, 6+len(pid)+len(nid))
 				copy(k[0:4], "rel:")
 				copy(k[4:4+len(pid)], pid)
@@ -273,7 +280,7 @@ func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]db.Re
 				n := ns[nid]
 
 				if ok {
-					return db.Relationship{
+					return company.Relationship{
 						CompanyID:   pid,
 						CompanyName: p.CompanyName,
 						PartnerID:   nid,
@@ -282,7 +289,7 @@ func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]db.Re
 						PartnerType: n.PartnerType,
 					}, nil
 				}
-				return db.Relationship{
+				return company.Relationship{
 					CompanyID:   nid,
 					CompanyName: n.CompanyName,
 					PartnerID:   pid,
@@ -292,7 +299,7 @@ func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]db.Re
 				}, nil
 			}
 
-			var pth []db.Relationship
+			var pth []company.Relationship
 			for i := len(left) - 1; i >= 0; i-- {
 				n := left[i]
 				pid := n.parent.id
@@ -347,8 +354,8 @@ func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]db.Re
 			if len(res) < 16 {
 				for it.Seek(k); it.ValidForPrefix(k); it.Next() {
 					nid := string(it.Item().Key()[len(k):])
-					found := slices.Contains(res, nid)
-					if !found {
+					ok := slices.Contains(res, nid)
+					if !ok {
 						res = append(res, nid)
 					}
 				}
@@ -527,7 +534,7 @@ func (s *Server) ConnectionHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 
-	var out []db.Relationship
+	var out []company.Relationship
 	ch := make(chan error, 1)
 	go func() {
 		var err error

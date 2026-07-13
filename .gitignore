@@ -1,5 +1,5 @@
 .env
 data/
 minha-receita
+site/
 ~/data/.gitkeep
-graph.db/

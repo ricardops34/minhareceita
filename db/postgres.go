@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"context"
 	"embed"
-	"encoding/csv"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"path/filepath"
@@ -458,81 +456,4 @@ func NewPostgreSQL(a *Args) (PostgreSQL, error) {
 		return PostgreSQL{}, fmt.Errorf("could not connect to postgres: %w", err)
 	}
 	return p, nil
-}
-
-// StreamRelationships streams all relationships directly from the main table
-// using encoding/csv.
-func (p *PostgreSQL) StreamRelationships(ctx context.Context, callback func(Relationship) error) error {
-	sql, err := p.renderTemplate("stream_relationships")
-	if err != nil {
-		return fmt.Errorf("error rendering stream_relationships template: %w", err)
-	}
-
-	pool, err := p.pool.Acquire(ctx)
-	if err != nil {
-		return fmt.Errorf("error acquiring connection from pool: %w", err)
-	}
-	defer pool.Release()
-
-	conn := pool.Conn().PgConn()
-	buf, pw := io.Pipe()
-
-	go func() {
-		_, err := conn.CopyTo(ctx, pw, sql)
-		if err != nil {
-			if closeErr := pw.CloseWithError(err); closeErr != nil {
-				slog.Warn("could not close pipe writer with error", "error", closeErr)
-			}
-			return
-		}
-		if closeErr := pw.Close(); closeErr != nil {
-			slog.Warn("could not close pipe writer", "error", closeErr)
-		}
-	}()
-
-	r := csv.NewReader(buf)
-	for {
-		rec, err := r.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("error parsing relationship CSV stream: %w", err)
-		}
-		if len(rec) < 6 {
-			continue
-		}
-		t, err := strconv.Atoi(rec[5])
-		if err != nil {
-			return err
-		}
-		rel := Relationship{
-			CompanyID:   rec[0],
-			CompanyName: rec[1],
-			PartnerID:   rec[2],
-			PartnerName: rec[3],
-			PartnerCPF:  rec[4],
-			PartnerType: t,
-		}
-		if err := callback(rel); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// RelationshipCount returns the count of relationships in the graph (items in qsa lists).
-func (p *PostgreSQL) RelationshipCount(ctx context.Context) (int64, error) {
-	sql, err := p.renderTemplate("relationship_count")
-	if err != nil {
-		return 0, fmt.Errorf("error rendering relationship_count template: %w", err)
-	}
-
-	var n int64
-	err = p.pool.QueryRow(ctx, sql).Scan(&n)
-	if err != nil {
-		return 0, fmt.Errorf("error querying relationship count: %w", err)
-	}
-	return n, nil
 }

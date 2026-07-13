@@ -18,8 +18,8 @@ LABEL org.opencontainers.image.description="Sua API de grafos para consulta de i
 LABEL org.opencontainers.image.source="https://codeberg.org/cuducos/minha-receita"
 LABEL org.opencontainers.image.title="Minha Receita - Grafo"
 ARG GRAPH_PATH
-COPY --chown=65532:65532 ${GRAPH_PATH} /graph.db
-CMD ["graph", "api", "--graph", "/graph.db"]
+COPY --chown=65532:65532 ${GRAPH_PATH} /graph.tar.gz
+CMD ["graph", "--graph", "/graph.tar.gz"]
 
 FROM base AS main
 LABEL org.opencontainers.image.description="Sua API web para consulta de informações do CNPJ da Receita Federal"

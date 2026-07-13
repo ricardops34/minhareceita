@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"codeberg.org/cuducos/minha-receita/company"
+	"codeberg.org/cuducos/minha-receita/graph"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 )
@@ -78,6 +79,12 @@ type database interface {
 	MetaSave(string, string) error
 }
 
+type graphWriter interface {
+	Save(*company.Relationship) error
+	Close() error
+	Path() string
+}
+
 func sources() map[string]*source { // all but Estabelecimentos (this one is loaded later on)
 	srcs := []*source{
 		newCompanySrc("Cnaes", ';', false, false),
@@ -122,17 +129,27 @@ func saveUpdatedAt(db database, date string) error {
 	return db.MetaSave("updated-at", date)
 }
 
-func postLoad(db database) error {
-	slog.Info("Consolidating the database…")
+func postLoad(db database, wait <-chan struct{}) error {
+	logs := make(chan string, 4) // so we have room for the 4 logs below
+	go func() {
+		if wait != nil {
+			<-wait
+		}
+		for msg := range logs {
+			slog.Info(msg)
+		}
+	}()
+	logs <- "Consolidating the database…"
 	if err := db.PostLoad(); err != nil {
 		return err
 	}
-	slog.Info("Database consolidated!")
-	slog.Info("Creating indexes…")
+	logs <- "Database consolidated!"
+	logs <- "Creating indexes…"
 	if err := db.CreateExtraIndexes(extraIndexes[:]); err != nil {
 		return err
 	}
-	slog.Info("Indexes created!")
+	logs <- "Indexes created!"
+	close(logs)
 	return nil
 }
 
@@ -156,9 +173,11 @@ func findUpdatedAt(dir string) (string, error) {
 	return "", fmt.Errorf("could not find YYYY-MM file in %s", dir)
 }
 
-func Transform(dir string, db database, batch int, privacy bool) error {
-	if err := db.PreLoad(); err != nil {
-		return err
+func Transform(dir string, db database, gw graphWriter, batch int, privacy bool) error {
+	if db != nil {
+		if err := db.PreLoad(); err != nil {
+			return err
+		}
 	}
 	srcs := sources()
 	u, err := findUpdatedAt(dir)
@@ -183,7 +202,7 @@ func Transform(dir string, db database, batch int, privacy bool) error {
 			slog.Warn("could not close badger database", "error", err)
 		}
 	}()
-	bar, err := newProgressBar("[1/2] Loading data to key-value storage", len(srcs))
+	bar, err := newProgressBar("[1/3] Loading data to key-value storage", len(srcs))
 	if err != nil {
 		return fmt.Errorf("could not create a progress bar: %w", err)
 	}
@@ -215,7 +234,7 @@ func Transform(dir string, db database, batch int, privacy bool) error {
 		return fmt.Errorf("could not flush key-value storage: %w", err)
 	}
 	src := newCompanySrc("Estabelecimentos", ';', false, false)
-	w, err := newWriter(db, kv, srcs, batch, privacy, dir, src)
+	w, err := newWriter(db, gw, kv, srcs, batch, privacy, dir, src)
 	if err != nil {
 		return err
 	}
@@ -223,10 +242,41 @@ func Transform(dir string, db database, batch int, privacy bool) error {
 	if err := w.write(ctx); err != nil {
 		return err
 	}
-	if err := postLoad(db); err != nil {
+	if gw != nil {
+		if err := gw.Close(); err != nil {
+			return err
+		}
+	}
+	g = errgroup.Group{}
+	wait := make(chan struct{}) // avoid breaking the compress graph progress bar
+	if db != nil {
+		g.Go(func() error { return postLoad(db, wait) })
+	}
+	if gw != nil {
+		g.Go(func() error {
+			defer close(wait)
+			b := progressbar.NewOptions64(
+				-1,
+				progressbar.OptionSetDescription("[3/3] Compressing graph directory"),
+				progressbar.OptionShowBytes(true),
+				progressbar.OptionShowCount(),
+				progressbar.OptionShowElapsedTimeOnFinish(),
+				progressbar.OptionFullWidth(),
+				progressbar.OptionUseANSICodes(true),
+				progressbar.OptionOnCompletion(func() { fmt.Println() }),
+			)
+			return graph.Compress(gw.Path(), b)
+		})
+	} else {
+		close(wait)
+	}
+	if err := g.Wait(); err != nil {
 		return err
 	}
-	return saveUpdatedAt(db, u)
+	if db != nil {
+		return saveUpdatedAt(db, u)
+	}
+	return nil
 }
 
 func Cleanup() error {
