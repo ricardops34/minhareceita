@@ -31,27 +31,27 @@ func TestAPI(t *testing.T) {
 
 	data := []company.Relationship{
 		{
-			CompanyID:   "11111111000111",
+			CompanyID:   "33683111000280",
 			CompanyName: "Company A",
-			PartnerID:   "22222222222",
+			PartnerID:   "3573de271293797f2abddc036be8f35e",
 			PartnerName: "Partner B",
-			PartnerCPF:  "22222222222",
+			PartnerCPF:  "***123456**",
 			PartnerType: 2,
 		},
 		{
-			CompanyID:   "33333333000133",
+			CompanyID:   "34712359000103",
 			CompanyName: "Company C",
-			PartnerID:   "22222222222",
+			PartnerID:   "3573de271293797f2abddc036be8f35e",
 			PartnerName: "Partner B",
-			PartnerCPF:  "22222222222",
+			PartnerCPF:  "***123456**",
 			PartnerType: 2,
 		},
 		{
-			CompanyID:   "33333333000133",
+			CompanyID:   "34712359000103",
 			CompanyName: "Company C",
-			PartnerID:   "44444444444",
+			PartnerID:   "70ec112375aec9de541ae0b7c54d7cac",
 			PartnerName: "Partner D",
-			PartnerCPF:  "44444444444",
+			PartnerCPF:  "***654321**",
 			PartnerType: 2,
 		},
 	}
@@ -86,9 +86,9 @@ func TestAPI(t *testing.T) {
 	defer srv.Close()
 
 	t.Run("Relations Handler", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/relacoes/22222222222", nil)
+		req := httptest.NewRequest("GET", "/3573de271293797f2abddc036be8f35e", nil)
 		w := httptest.NewRecorder()
-		srv.RelationsHandler(w, req)
+		srv.handler(w, req)
 
 		res := w.Result()
 		defer func() {
@@ -113,9 +113,9 @@ func TestAPI(t *testing.T) {
 	})
 
 	t.Run("Connection Handler", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/conexao/11111111000111/33333333000133", nil)
+		req := httptest.NewRequest("GET", "/33683111000280/34712359000103", nil)
 		w := httptest.NewRecorder()
-		srv.ConnectionHandler(w, req)
+		srv.handler(w, req)
 
 		res := w.Result()
 		defer func() {
@@ -138,10 +138,10 @@ func TestAPI(t *testing.T) {
 			t.Errorf("expected path of length 2, got %d", len(rels))
 		}
 
-		if rels[0].CompanyID != "11111111000111" || rels[0].PartnerID != "22222222222" {
+		if rels[0].CompanyID != "33683111000280" || rels[0].PartnerID != "3573de271293797f2abddc036be8f35e" {
 			t.Errorf("unexpected first relationship: %+v", rels[0])
 		}
-		if rels[1].CompanyID != "33333333000133" || rels[1].PartnerID != "22222222222" {
+		if rels[1].CompanyID != "34712359000103" || rels[1].PartnerID != "3573de271293797f2abddc036be8f35e" {
 			t.Errorf("unexpected second relationship: %+v", rels[1])
 		}
 	})
@@ -149,9 +149,9 @@ func TestAPI(t *testing.T) {
 	t.Run("Connection Handler Cancelled Context", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		req := httptest.NewRequest("GET", "/conexao/11111111000111/33333333000133", nil).WithContext(ctx)
+		req := httptest.NewRequest("GET", "/33683111000280/34712359000103", nil).WithContext(ctx)
 		w := httptest.NewRecorder()
-		srv.ConnectionHandler(w, req)
+		srv.handler(w, req)
 
 		res := w.Result()
 		defer func() {
@@ -165,14 +165,36 @@ func TestAPI(t *testing.T) {
 		}
 	})
 
+	t.Run("Malformed URLs", func(t *testing.T) {
+		urls := []string{
+			"/123",                // too short
+			"/11111111000111",     // invalid CNPJ length 14
+			"/33683111000280/123", // valid id1, invalid id2
+			"/123/34712359000103", // invalid id1, valid id2
+			"/123/456",            // both invalid
+		}
+		for _, url := range urls {
+			req := httptest.NewRequest("GET", url, nil)
+			w := httptest.NewRecorder()
+			srv.handler(w, req)
+			res := w.Result()
+			if res.StatusCode != http.StatusBadRequest {
+				t.Errorf("expected 400 Bad Request for %s, got %d", url, res.StatusCode)
+			}
+			if err := res.Body.Close(); err != nil {
+				t.Logf("failed to close response body: %v", err)
+			}
+		}
+	})
+
 	t.Run("Metrics and Middleware", func(t *testing.T) {
 		mux := http.NewServeMux()
-		mux.HandleFunc("/relacoes/", srv.headersWrapper(srv.RelationsHandler))
+		mux.HandleFunc("/", srv.handler)
 		mux.Handle("/metrics", promhttp.Handler())
 
 		handler := bandwidthMiddleware(mux)
 
-		req := httptest.NewRequest("GET", "/relacoes/22222222222", nil)
+		req := httptest.NewRequest("GET", "/3573de271293797f2abddc036be8f35e", nil)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 

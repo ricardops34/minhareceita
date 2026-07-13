@@ -442,48 +442,96 @@ func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]compa
 	return path, nil
 }
 
-func (s *Server) headersWrapper(h http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		i := time.Now().UnixMilli()
-		n := "relations"
-		if strings.HasPrefix(r.URL.Path, "/conexao/") {
-			n = "connection"
-		}
-
-		w.Header().Set("Cache-Control", cacheControl)
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding")
-		w.Header().Set("Content-type", "application/json")
-
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
-			registerMetric(n, r.Method, http.StatusOK, i)
-			return
-		}
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			if _, err := io.WriteString(w, `{"message":"Essa URL aceita apenas o método GET."}`); err != nil {
-				slog.Error("failed to write method not allowed response", "error", err)
-			}
-			registerMetric(n, r.Method, http.StatusMethodNotAllowed, i)
-			return
-		}
-		h(w, r)
+func isValidID(p string) bool {
+	if cnpj.IsValid(p) {
+		return true
 	}
+	if len(p) != 32 {
+		return false
+	}
+	for i := range 32 {
+		if (p[i] < 'a' || p[i] > 'z') && (p[i] < '0' || p[i] > '9') {
+			return false
+		}
+	}
+	return true
 }
 
-func (s *Server) RelationsHandler(w http.ResponseWriter, r *http.Request) {
-	i := time.Now().UnixMilli()
-	id := strings.TrimPrefix(r.URL.Path, "/relacoes/")
-	if id == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		if _, err := io.WriteString(w, `{"message":"Uso: /relacoes/<ID>"}`); err != nil {
-			slog.Error("failed to write relations bad request response", "error", err)
+func ids(p string) (string, string, bool) {
+	if len(p) > 14 && p[14] == '/' {
+		one := p[:14]
+		two := p[15:]
+		if isValidID(one) && isValidID(two) {
+			return one, two, true
 		}
-		registerMetric("relations", r.Method, http.StatusBadRequest, i)
+	}
+	if len(p) > 18 && p[18] == '/' {
+		one := p[:18]
+		two := p[19:]
+		if isValidID(one) && isValidID(two) {
+			return one, two, true
+		}
+	}
+	if len(p) > 32 && p[32] == '/' {
+		one := p[:32]
+		two := p[33:]
+		if isValidID(one) && isValidID(two) {
+			return one, two, true
+		}
+	}
+	return "", "", false
+}
+
+func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
+	i := time.Now().UnixMilli()
+	if r.URL.Path == "/" {
+		http.Redirect(w, r, "https://docs.minhareceita.org", http.StatusFound)
+		registerMetric("root", r.Method, http.StatusFound, i)
 		return
 	}
+
+	w.Header().Set("Cache-Control", cacheControl)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding")
+	w.Header().Set("Content-type", "application/json")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		registerMetric("options", r.Method, http.StatusOK, i)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		if _, err := io.WriteString(w, `{"message":"Essa URL aceita apenas o método GET."}`); err != nil {
+			slog.Error("failed to write method not allowed response", "error", err)
+		}
+		registerMetric("method_not_allowed", r.Method, http.StatusMethodNotAllowed, i)
+		return
+	}
+
+	p := strings.TrimPrefix(r.URL.Path, "/")
+	p = strings.TrimSuffix(p, "/")
+
+	if isValidID(p) {
+		s.relationsHandler(w, r, p, i)
+		return
+	}
+
+	one, two, ok := ids(p)
+	if ok {
+		s.connectionHandler(w, r, one, two, i)
+		return
+	}
+
+	w.WriteHeader(http.StatusBadRequest)
+	if _, err := io.WriteString(w, `{"message":"Endpoint inválido. Use /<ID> para relações ou /<ID1>/<ID2> para conexões."}`); err != nil {
+		slog.Error("failed to write bad request response", "error", err)
+	}
+	registerMetric("root", r.Method, http.StatusBadRequest, i)
+}
+
+func (s *Server) relationsHandler(w http.ResponseWriter, r *http.Request, id string, i int64) {
 	if cnpj.IsValid(id) {
 		id = cnpj.Unmask(id)
 	}
@@ -511,19 +559,7 @@ func (s *Server) RelationsHandler(w http.ResponseWriter, r *http.Request) {
 	registerMetric("relations", r.Method, http.StatusOK, i)
 }
 
-func (s *Server) ConnectionHandler(w http.ResponseWriter, r *http.Request) {
-	i := time.Now().UnixMilli()
-	pth := strings.TrimPrefix(r.URL.Path, "/conexao/")
-	p := strings.Split(pth, "/")
-	if len(p) != 2 {
-		w.WriteHeader(http.StatusBadRequest)
-		if _, err := io.WriteString(w, `{"message":"Endpoint /conexao/ exige dois identificadores, ex: /conexao/id1/id2"}`); err != nil {
-			slog.Error("failed to write connection bad request response", "error", err)
-		}
-		registerMetric("connection", r.Method, http.StatusBadRequest, i)
-		return
-	}
-	src, dst := p[0], p[1]
+func (s *Server) connectionHandler(w http.ResponseWriter, r *http.Request, src, dst string, i int64) {
 	if cnpj.IsValid(src) {
 		src = cnpj.Unmask(src)
 	}
@@ -593,28 +629,13 @@ func (s *Server) ConnectionHandler(w http.ResponseWriter, r *http.Request) {
 
 func Serve(srv *Server, port string) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/relacoes/", srv.headersWrapper(srv.RelationsHandler))
-	mux.HandleFunc("/conexao/", srv.headersWrapper(srv.ConnectionHandler))
 	mux.HandleFunc("/metrics", promhttp.Handler().ServeHTTP)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		i := time.Now().UnixMilli()
 		w.WriteHeader(http.StatusOK)
 		registerMetric("/healthz", r.Method, http.StatusOK, i)
 	})
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		i := time.Now().UnixMilli()
-		if r.URL.Path != "/" {
-			w.Header().Set("Content-type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			if _, err := fmt.Fprintf(w, `{"message":"Endpoint %s não encontrado. Use /relacoes/<ID> ou /conexao/<ID>/<ID>."}`, r.URL.Path); err != nil {
-				slog.Error("failed to write not found response", "error", err)
-			}
-			registerMetric("root", r.Method, http.StatusNotFound, i)
-			return
-		}
-		http.Redirect(w, r, "https://docs.minhareceita.org", http.StatusFound)
-		registerMetric("root", r.Method, http.StatusFound, i)
-	})
+	mux.HandleFunc("/", srv.handler)
 
 	slog.Info(fmt.Sprintf("Serving standalone graph API at http://0.0.0.0:%s", port))
 	server := &http.Server{

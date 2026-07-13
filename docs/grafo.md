@@ -10,9 +10,9 @@ O comando `graph` permite criar uma API para explorar as relações entre quadro
 
 ## Como usar
 
-Para consultar as *relações de uma empresa ou de uma pessoa física*, use `GET /relacoes/<id>`, sendo que o valor de `id` é [o CNPJ para pessoas jurídicas, ou um _hash_ para as demais](./contributing/etl.md#chaves).
+Para consultar as *relações de uma empresa ou de uma pessoa física*, use `GET /<id>`, sendo que o valor de `id` é [o CNPJ para pessoas jurídicas, ou um _hash_ para as demais](./contributing/etl.md#chaves).
 
-??? example "Exemplo de resposta para `GET /relacoes/33683111000280`"
+??? example "Exemplo de resposta para `GET /33683111000280`"
     ```json
     [
       {
@@ -67,11 +67,11 @@ Para consultar as *relações de uma empresa ou de uma pessoa física*, use `GET
     ]
     ```
 
-A partir de então navegue no grafo com mais requisições para `/relacoes/<id>` para saber em quais outros quadro societários essa pessoa (física ou jurídica) está.
+A partir de então navegue no grafo com mais requisições para `/<id>` para saber em quais outros quadro societários essa pessoa (física ou jurídica) está.
 
-Para descobrir a *menor conexão entre duas pessoas físicas ou jurídicas*, use `GET /conexao/<id1>/<id2>`. A busca dura no máximo 90 segundos; caso, nesse intervalo, nenhuma conexão seja encontrada, isso não significa que nenhuma conexão é possível.
+Para descobrir a *menor conexão entre duas pessoas físicas ou jurídicas*, use `GET /<id1>/<id2>`. A busca dura no máximo 90 segundos; caso, nesse intervalo, nenhuma conexão seja encontrada, isso não significa que nenhuma conexão é possível.
 
-??? example "Exemplo de resposta para `GET /conexao/34712359000103/27516314000106`"
+??? example "Exemplo de resposta para `GET /34712359000103/27516314000106`"
     ```json
     [
       {
