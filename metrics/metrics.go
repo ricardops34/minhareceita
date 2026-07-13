@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	metricLabels    = []string{"method", "status_code", "endpoint"}
-	bandwidthLabels = []string{"method", "endpoint"}
+	metricLabels    = []string{"api", "method", "status_code", "endpoint"}
+	bandwidthLabels = []string{"api", "method", "endpoint"}
 
 	RequestCount = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "requests_total",
@@ -59,8 +59,8 @@ var (
 	}, bandwidthLabels)
 )
 
-func RegisterMetric(e, m string, s int, i time.Time) {
+func RegisterMetric(a, e, m string, s int, i time.Time) {
 	c := fmt.Sprintf("%d", s)
-	RequestCount.WithLabelValues(m, c, e).Inc()
-	RequestDuration.WithLabelValues(m, c, e).Observe(time.Since(i).Seconds())
+	RequestCount.WithLabelValues(a, m, c, e).Inc()
+	RequestDuration.WithLabelValues(a, m, c, e).Observe(time.Since(i).Seconds())
 }

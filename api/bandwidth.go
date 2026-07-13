@@ -39,11 +39,11 @@ func bandwidthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b := &bandwidthResponseWriter{ResponseWriter: w}
 		next.ServeHTTP(b, r)
-		registerBandwidth(normalizeEndpoint(r), r.Method, int(r.ContentLength), b.bytes)
+		registerBandwidth("main", normalizeEndpoint(r), r.Method, int(r.ContentLength), b.bytes)
 	})
 }
 
-func registerBandwidth(e, m string, reqBytes, respBytes int) {
-	metrics.RequestBytes.WithLabelValues(m, e).Add(float64(reqBytes))
-	metrics.ResponseBytes.WithLabelValues(m, e).Add(float64(respBytes))
+func registerBandwidth(a, e, m string, reqBytes, respBytes int) {
+	metrics.RequestBytes.WithLabelValues(a, m, e).Add(float64(reqBytes))
+	metrics.ResponseBytes.WithLabelValues(a, m, e).Add(float64(respBytes))
 }

@@ -41,15 +41,15 @@ func bandwidthMiddleware(next http.Handler) http.Handler {
 		p := parseRequest(r)
 		ctx := context.WithValue(r.Context(), graphRequestKey{}, p)
 		next.ServeHTTP(b, r.WithContext(ctx))
-		registerBandwidth(normalizeEndpoint(r.URL.Path, p), r.Method, int(r.ContentLength), b.bytes)
+		registerBandwidth("graph", normalizeEndpoint(r.URL.Path, p), r.Method, int(r.ContentLength), b.bytes)
 	})
 }
 
-func registerBandwidth(e, m string, reqBytes, respBytes int) {
+func registerBandwidth(a, e, m string, reqBytes, respBytes int) {
 	if reqBytes > 0 {
-		metrics.RequestBytes.WithLabelValues(m, e).Add(float64(reqBytes))
+		metrics.RequestBytes.WithLabelValues(a, m, e).Add(float64(reqBytes))
 	}
 	if respBytes > 0 {
-		metrics.ResponseBytes.WithLabelValues(m, e).Add(float64(respBytes))
+		metrics.ResponseBytes.WithLabelValues(a, m, e).Add(float64(respBytes))
 	}
 }

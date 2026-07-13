@@ -446,7 +446,7 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 	i := time.Now()
 	if r.URL.Path == "/" {
 		http.Redirect(w, r, "https://docs.minhareceita.org", http.StatusFound)
-		metrics.RegisterMetric("root", r.Method, http.StatusFound, i)
+		metrics.RegisterMetric("graph", "root", r.Method, http.StatusFound, i)
 		return
 	}
 
@@ -458,7 +458,7 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusOK)
-		metrics.RegisterMetric("options", r.Method, http.StatusOK, i)
+		metrics.RegisterMetric("graph", "options", r.Method, http.StatusOK, i)
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -466,7 +466,7 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		if _, err := io.WriteString(w, `{"message":"Essa URL aceita apenas o método GET."}`); err != nil {
 			slog.Error("failed to write method not allowed response", "error", err)
 		}
-		metrics.RegisterMetric("method_not_allowed", r.Method, http.StatusMethodNotAllowed, i)
+		metrics.RegisterMetric("graph", "method_not_allowed", r.Method, http.StatusMethodNotAllowed, i)
 		return
 	}
 
@@ -485,7 +485,7 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		if _, err := io.WriteString(w, `{"message":"Endpoint inválido. Use /<ID> para relações ou /<ID1>/<ID2> para conexões."}`); err != nil {
 			slog.Error("failed to write bad request response", "error", err)
 		}
-		metrics.RegisterMetric("root", r.Method, http.StatusBadRequest, i)
+		metrics.RegisterMetric("graph", "root", r.Method, http.StatusBadRequest, i)
 	}
 }
 
@@ -496,7 +496,7 @@ func (s *Server) relationsHandler(w http.ResponseWriter, r *http.Request, id str
 		if _, err := fmt.Fprintf(w, `{"message":"Identificador %s não encontrado ou sem conexões."}`, id); err != nil {
 			slog.Error("failed to write relations not found response", "error", err)
 		}
-		metrics.RegisterMetric("relations", r.Method, http.StatusNotFound, i)
+		metrics.RegisterMetric("graph", "relations", r.Method, http.StatusNotFound, i)
 		return
 	}
 
@@ -510,7 +510,7 @@ func (s *Server) relationsHandler(w http.ResponseWriter, r *http.Request, id str
 	if err := json.NewEncoder(w).Encode(rels); err != nil {
 		slog.Error("failed to encode relations response", "error", err)
 	}
-	metrics.RegisterMetric("relations", r.Method, http.StatusOK, i)
+	metrics.RegisterMetric("graph", "relations", r.Method, http.StatusOK, i)
 }
 
 func (s *Server) connectionHandler(w http.ResponseWriter, r *http.Request, src, dst string, i time.Time) {
@@ -531,7 +531,7 @@ func (s *Server) connectionHandler(w http.ResponseWriter, r *http.Request, src, 
 		if _, err := fmt.Fprintf(w, `{"message":"Não foi possível calcular a conexão entre %s e %s em 90s."}`, src, dst); err != nil {
 			slog.Error("failed to write connection timeout response", "error", err)
 		}
-		metrics.RegisterMetric("connection", r.Method, http.StatusGatewayTimeout, i)
+		metrics.RegisterMetric("graph", "connection", r.Method, http.StatusGatewayTimeout, i)
 		return
 	case err := <-ch:
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
@@ -539,7 +539,7 @@ func (s *Server) connectionHandler(w http.ResponseWriter, r *http.Request, src, 
 			if _, err := fmt.Fprintf(w, `{"message":"Não foi possível calcular a conexão entre %s e %s em 90s."}`, src, dst); err != nil {
 				slog.Error("failed to write connection timeout response", "error", err)
 			}
-			metrics.RegisterMetric("connection", r.Method, http.StatusGatewayTimeout, i)
+			metrics.RegisterMetric("graph", "connection", r.Method, http.StatusGatewayTimeout, i)
 			return
 		}
 		if errors.Is(err, errNoConnection) {
@@ -547,7 +547,7 @@ func (s *Server) connectionHandler(w http.ResponseWriter, r *http.Request, src, 
 			if _, err := fmt.Fprintf(w, `{"message":"Nenhuma conexão encontrada entre %s e %s."}`, src, dst); err != nil {
 				slog.Error("failed to write connection not found response", "error", err)
 			}
-			metrics.RegisterMetric("connection", r.Method, http.StatusNotFound, i)
+			metrics.RegisterMetric("graph", "connection", r.Method, http.StatusNotFound, i)
 			return
 		}
 		if err != nil {
@@ -556,7 +556,7 @@ func (s *Server) connectionHandler(w http.ResponseWriter, r *http.Request, src, 
 			if _, err := fmt.Fprintf(w, `{"message":"Erro ao calcular a conexão entre %s e %s."}`, src, dst); err != nil {
 				slog.Error("failed to write connection error response", "error", err)
 			}
-			metrics.RegisterMetric("connection", r.Method, http.StatusInternalServerError, i)
+			metrics.RegisterMetric("graph", "connection", r.Method, http.StatusInternalServerError, i)
 			return
 		}
 	}
@@ -571,7 +571,7 @@ func (s *Server) connectionHandler(w http.ResponseWriter, r *http.Request, src, 
 	if err := json.NewEncoder(w).Encode(out); err != nil {
 		slog.Error("failed to encode connection response", "error", err)
 	}
-	metrics.RegisterMetric("connection", r.Method, http.StatusOK, i)
+	metrics.RegisterMetric("graph", "connection", r.Method, http.StatusOK, i)
 }
 
 func Serve(srv *Server, port string) error {
@@ -580,7 +580,7 @@ func Serve(srv *Server, port string) error {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		i := time.Now()
 		w.WriteHeader(http.StatusOK)
-		metrics.RegisterMetric("/healthz", r.Method, http.StatusOK, i)
+		metrics.RegisterMetric("graph", "/healthz", r.Method, http.StatusOK, i)
 	})
 	mux.HandleFunc("/", srv.handler)
 

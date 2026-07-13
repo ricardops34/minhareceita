@@ -83,7 +83,7 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-type", "application/json")
 	if !cnpj.IsValid(pth) {
 		app.messageResponse(w, http.StatusBadRequest, fmt.Sprintf("CNPJ %s inválido.", safeCNPJ(pth[1:])))
-		metrics.RegisterMetric("singleCompany", r.Method, http.StatusBadRequest, i)
+		metrics.RegisterMetric("main", "singleCompany", r.Method, http.StatusBadRequest, i)
 		return
 	}
 	id := cnpj.Unmask(pth)
@@ -92,14 +92,14 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 			metrics.CacheHits.Inc()
 			if len(s) == 0 {
 				app.messageResponse(w, http.StatusNotFound, fmt.Sprintf("CNPJ %s não encontrado.", cnpj.Mask(pth)))
-				metrics.RegisterMetric("singleCompany", r.Method, http.StatusNotFound, i)
+				metrics.RegisterMetric("main", "singleCompany", r.Method, http.StatusNotFound, i)
 				return
 			}
 			w.WriteHeader(http.StatusOK)
 			if _, err := w.Write(s); err != nil {
 				slog.Error("error responding to cached single company request", "request", r, "error", err)
 			}
-			metrics.RegisterMetric("singleCompany", r.Method, http.StatusOK, i)
+			metrics.RegisterMetric("main", "singleCompany", r.Method, http.StatusOK, i)
 			return
 		}
 		metrics.CacheMisses.Inc()
@@ -111,7 +111,7 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 		} else if !ok {
 			metrics.BloomFilterEarlyExits.Inc()
 			app.messageResponse(w, http.StatusNotFound, fmt.Sprintf("CNPJ %s não encontrado.", cnpj.Mask(pth)))
-			metrics.RegisterMetric("singleCompany", r.Method, http.StatusNotFound, i)
+			metrics.RegisterMetric("main", "singleCompany", r.Method, http.StatusNotFound, i)
 			return
 		}
 	}
@@ -122,13 +122,13 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 				app.cache.set(id, nil)
 			}
 			app.messageResponse(w, http.StatusNotFound, fmt.Sprintf("CNPJ %s não encontrado.", cnpj.Mask(pth)))
-			metrics.RegisterMetric("singleCompany", r.Method, http.StatusNotFound, i)
+			metrics.RegisterMetric("main", "singleCompany", r.Method, http.StatusNotFound, i)
 			return
 		}
 		slog.Error("error retrieving company", "cnpj", pth, "error", err)
 		w.Header().Set("Cache-Control", "no-store")
 		app.messageResponse(w, http.StatusServiceUnavailable, "Serviço temporariamente indisponível, tente novamente.")
-		metrics.RegisterMetric("singleCompany", r.Method, http.StatusServiceUnavailable, i)
+		metrics.RegisterMetric("main", "singleCompany", r.Method, http.StatusServiceUnavailable, i)
 		return
 	}
 	if app.cache != nil {
@@ -138,7 +138,7 @@ func (app *api) singleCompany(pth string, w http.ResponseWriter, r *http.Request
 	if _, err := w.Write(s); err != nil {
 		slog.Error("error responding to successful single company request", "request", r, "error", err)
 	}
-	metrics.RegisterMetric("singleCompany", r.Method, http.StatusOK, i)
+	metrics.RegisterMetric("main", "singleCompany", r.Method, http.StatusOK, i)
 }
 
 func (app *api) paginatedSearch(q *db.Query, w http.ResponseWriter, r *http.Request, i time.Time) {
@@ -161,20 +161,20 @@ func (app *api) paginatedSearch(q *db.Query, w http.ResponseWriter, r *http.Requ
 			}
 		}
 		app.messageResponse(w, http.StatusRequestTimeout, b.String())
-		metrics.RegisterMetric("paginatedSearch", r.Method, http.StatusRequestTimeout, i)
+		metrics.RegisterMetric("main", "paginatedSearch", r.Method, http.StatusRequestTimeout, i)
 		return
 	}
 	if err != nil {
 		slog.Error("paginated search error", "error", err, "query", q)
 		app.messageResponse(w, http.StatusNotFound, "Erro inesperado na busca.")
-		metrics.RegisterMetric("paginatedSearch", r.Method, http.StatusNotFound, i)
+		metrics.RegisterMetric("main", "paginatedSearch", r.Method, http.StatusNotFound, i)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(s); err != nil {
 		slog.Error("error responding to successful paginated search request", "query", q, "request", r, "error", err)
 	}
-	metrics.RegisterMetric("paginatedSearch", r.Method, http.StatusOK, i)
+	metrics.RegisterMetric("main", "paginatedSearch", r.Method, http.StatusOK, i)
 }
 
 func (app *api) companyHandler(w http.ResponseWriter, r *http.Request) {
@@ -189,11 +189,11 @@ func (app *api) companyHandler(w http.ResponseWriter, r *http.Request) {
 		break
 	case http.MethodOptions:
 		w.WriteHeader(http.StatusOK)
-		metrics.RegisterMetric("earlyReturn", r.Method, http.StatusOK, i)
+		metrics.RegisterMetric("main", "earlyReturn", r.Method, http.StatusOK, i)
 		return
 	default:
 		app.messageResponse(w, http.StatusMethodNotAllowed, "Essa URL aceita apenas o método GET.")
-		metrics.RegisterMetric("earlyReturn", r.Method, http.StatusMethodNotAllowed, i)
+		metrics.RegisterMetric("main", "earlyReturn", r.Method, http.StatusMethodNotAllowed, i)
 		return
 	}
 	pth := r.URL.Path
@@ -201,7 +201,7 @@ func (app *api) companyHandler(w http.ResponseWriter, r *http.Request) {
 		q := db.NewQuery(r.URL.Query())
 		if q == nil {
 			http.Redirect(w, r, "https://docs.minhareceita.org", http.StatusFound)
-			metrics.RegisterMetric("redirectedToDocs", r.Method, http.StatusFound, i)
+			metrics.RegisterMetric("main", "redirectedToDocs", r.Method, http.StatusFound, i)
 			return
 		}
 		app.paginatedSearch(q, w, r, i)
@@ -214,29 +214,29 @@ func (app *api) updatedHandler(w http.ResponseWriter, r *http.Request) {
 	i := time.Now()
 	if r.Method != http.MethodGet {
 		app.messageResponse(w, http.StatusMethodNotAllowed, "Essa URL aceita apenas o método GET.")
-		metrics.RegisterMetric("updated", r.Method, http.StatusMethodNotAllowed, i)
+		metrics.RegisterMetric("main", "updated", r.Method, http.StatusMethodNotAllowed, i)
 		return
 	}
 	s, err := app.db.MetaRead("updated-at")
 	if err != nil || s == "" {
 		app.messageResponse(w, http.StatusInternalServerError, "Erro buscando data de atualização.")
-		metrics.RegisterMetric("updated", r.Method, http.StatusInternalServerError, i)
+		metrics.RegisterMetric("main", "updated", r.Method, http.StatusInternalServerError, i)
 		return
 	}
 	w.Header().Set("Cache-Control", cacheControl)
 	app.messageResponse(w, http.StatusOK, s)
-	metrics.RegisterMetric("updated", r.Method, http.StatusOK, i)
+	metrics.RegisterMetric("main", "updated", r.Method, http.StatusOK, i)
 }
 
 func (app *api) healthHandler(w http.ResponseWriter, r *http.Request) {
 	i := time.Now()
 	if r.Method != http.MethodHead && r.Method != http.MethodGet {
 		app.messageResponse(w, http.StatusMethodNotAllowed, "Essa URL aceita apenas os métodos GET e HEAD.")
-		metrics.RegisterMetric("health", r.Method, http.StatusMethodNotAllowed, i)
+		metrics.RegisterMetric("main", "health", r.Method, http.StatusMethodNotAllowed, i)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	metrics.RegisterMetric("health", r.Method, http.StatusOK, i)
+	metrics.RegisterMetric("main", "health", r.Method, http.StatusOK, i)
 }
 
 func (app *api) allowedHostWrapper(h func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
