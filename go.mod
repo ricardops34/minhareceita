@@ -16,7 +16,7 @@ require (
 	go.mongodb.org/mongo-driver/v2 v2.6.0
 	golang.org/x/sync v0.22.0
 	golang.org/x/text v0.40.0
-	tangled.org/cuducos.me/go-cnpj v0.1.3
+	tangled.org/cuducos.me/go-cnpj v0.1.4
 )
 
 require (
