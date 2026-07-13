@@ -1,9 +1,11 @@
 package graph
 
 import (
+	"context"
 	"net/http"
-	"strings"
 )
+
+type graphRequestKey struct{}
 
 type bandwidthResponseWriter struct {
 	http.ResponseWriter
@@ -16,26 +18,28 @@ func (w *bandwidthResponseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-func normalizeEndpoint(r *http.Request) string {
-	switch {
-	case r.URL.Path == "/":
+func normalizeEndpoint(path string, req *graphRequest) string {
+	if path == "/" {
 		return "root"
-	case r.URL.Path == "/healthz", r.URL.Path == "/metrics":
-		return r.URL.Path
-	case strings.HasPrefix(r.URL.Path, "/relacoes/"):
-		return "relations"
-	case strings.HasPrefix(r.URL.Path, "/conexao/"):
-		return "connection"
-	default:
-		return r.URL.Path
 	}
+
+	switch req.kind {
+	case singleID:
+		return "relations"
+	case connection:
+		return "connection"
+	}
+
+	return path
 }
 
 func bandwidthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b := &bandwidthResponseWriter{ResponseWriter: w}
-		next.ServeHTTP(b, r)
-		registerBandwidth(normalizeEndpoint(r), r.Method, int(r.ContentLength), b.bytes)
+		p := parseRequest(r)
+		ctx := context.WithValue(r.Context(), graphRequestKey{}, p)
+		next.ServeHTTP(b, r.WithContext(ctx))
+		registerBandwidth(normalizeEndpoint(r.URL.Path, p), r.Method, int(r.ContentLength), b.bytes)
 	})
 }
 

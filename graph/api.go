@@ -17,7 +17,6 @@ import (
 	"github.com/dgraph-io/ristretto/v2"
 	"github.com/klauspost/compress/gzhttp"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"tangled.org/cuducos.me/go-cnpj"
 )
 
 const (
@@ -442,46 +441,6 @@ func (s *Server) findShortestPath(ctx context.Context, src, dst string) ([]compa
 	return path, nil
 }
 
-func isValidID(p string) bool {
-	if cnpj.IsValid(p) {
-		return true
-	}
-	if len(p) != 32 {
-		return false
-	}
-	for i := range 32 {
-		if (p[i] < 'a' || p[i] > 'z') && (p[i] < '0' || p[i] > '9') {
-			return false
-		}
-	}
-	return true
-}
-
-func ids(p string) (string, string, bool) {
-	if len(p) > 14 && p[14] == '/' {
-		one := p[:14]
-		two := p[15:]
-		if isValidID(one) && isValidID(two) {
-			return one, two, true
-		}
-	}
-	if len(p) > 18 && p[18] == '/' {
-		one := p[:18]
-		two := p[19:]
-		if isValidID(one) && isValidID(two) {
-			return one, two, true
-		}
-	}
-	if len(p) > 32 && p[32] == '/' {
-		one := p[:32]
-		two := p[33:]
-		if isValidID(one) && isValidID(two) {
-			return one, two, true
-		}
-	}
-	return "", "", false
-}
-
 func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 	i := time.Now().UnixMilli()
 	if r.URL.Path == "/" {
@@ -510,32 +469,26 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p := strings.TrimPrefix(r.URL.Path, "/")
-	p = strings.TrimSuffix(p, "/")
-
-	if isValidID(p) {
-		s.relationsHandler(w, r, p, i)
-		return
+	p, ok := r.Context().Value(graphRequestKey{}).(*graphRequest)
+	if !ok {
+		p = parseRequest(r)
 	}
 
-	one, two, ok := ids(p)
-	if ok {
-		s.connectionHandler(w, r, one, two, i)
-		return
+	switch p.kind {
+	case singleID:
+		s.relationsHandler(w, r, p.id1, i)
+	case connection:
+		s.connectionHandler(w, r, p.id1, p.id2, i)
+	case badRequest:
+		w.WriteHeader(http.StatusBadRequest)
+		if _, err := io.WriteString(w, `{"message":"Endpoint inválido. Use /<ID> para relações ou /<ID1>/<ID2> para conexões."}`); err != nil {
+			slog.Error("failed to write bad request response", "error", err)
+		}
+		registerMetric("root", r.Method, http.StatusBadRequest, i)
 	}
-
-	w.WriteHeader(http.StatusBadRequest)
-	if _, err := io.WriteString(w, `{"message":"Endpoint inválido. Use /<ID> para relações ou /<ID1>/<ID2> para conexões."}`); err != nil {
-		slog.Error("failed to write bad request response", "error", err)
-	}
-	registerMetric("root", r.Method, http.StatusBadRequest, i)
 }
 
 func (s *Server) relationsHandler(w http.ResponseWriter, r *http.Request, id string, i int64) {
-	if cnpj.IsValid(id) {
-		id = cnpj.Unmask(id)
-	}
-
 	rels, err := s.getRelations(id)
 	if err != nil || len(rels) == 0 {
 		w.WriteHeader(http.StatusNotFound)
@@ -560,13 +513,6 @@ func (s *Server) relationsHandler(w http.ResponseWriter, r *http.Request, id str
 }
 
 func (s *Server) connectionHandler(w http.ResponseWriter, r *http.Request, src, dst string, i int64) {
-	if cnpj.IsValid(src) {
-		src = cnpj.Unmask(src)
-	}
-	if cnpj.IsValid(dst) {
-		dst = cnpj.Unmask(dst)
-	}
-
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 
