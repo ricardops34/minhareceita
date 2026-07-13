@@ -202,7 +202,7 @@ func Transform(dir string, db database, gw graphWriter, batch int, privacy bool)
 			slog.Warn("could not close badger database", "error", err)
 		}
 	}()
-	bar, err := newProgressBar("[1/2] Loading data to key-value storage", len(srcs))
+	bar, err := newProgressBar("[1/3] Loading data to key-value storage", len(srcs))
 	if err != nil {
 		return fmt.Errorf("could not create a progress bar: %w", err)
 	}
@@ -255,7 +255,17 @@ func Transform(dir string, db database, gw graphWriter, batch int, privacy bool)
 	if gw != nil {
 		g.Go(func() error {
 			defer close(wait)
-			return graph.Compress(gw.Path())
+			b := progressbar.NewOptions64(
+				-1,
+				progressbar.OptionSetDescription("[3/3] Compressing graph directory"),
+				progressbar.OptionShowBytes(true),
+				progressbar.OptionShowCount(),
+				progressbar.OptionShowElapsedTimeOnFinish(),
+				progressbar.OptionFullWidth(),
+				progressbar.OptionUseANSICodes(true),
+				progressbar.OptionOnCompletion(func() { fmt.Println() }),
+			)
+			return graph.Compress(gw.Path(), b)
 		})
 	} else {
 		close(wait)

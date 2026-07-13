@@ -15,7 +15,7 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
-func Compress(path string) error {
+func Compress(path string, bar *progressbar.ProgressBar) error {
 	var c int64
 	err := filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -44,17 +44,13 @@ func Compress(path string) error {
 		}
 	}()
 
-	b := progressbar.NewOptions64(
-		c,
-		progressbar.OptionSetDescription("Compressing graph directory"),
-		progressbar.OptionShowBytes(true),
-		progressbar.OptionShowCount(),
-		progressbar.OptionShowElapsedTimeOnFinish(),
-		progressbar.OptionFullWidth(),
-		progressbar.OptionUseANSICodes(true),
-		progressbar.OptionOnCompletion(func() { fmt.Println() }),
-	)
-	g := gzip.NewWriter(io.MultiWriter(f, b))
+	var g *gzip.Writer
+	if bar != nil {
+		bar.ChangeMax64(c)
+		g = gzip.NewWriter(io.MultiWriter(f, bar))
+	} else {
+		g = gzip.NewWriter(f)
+	}
 	defer func() {
 		if err := g.Close(); err != nil {
 			slog.Warn("could not close gzip writer", "error", err)

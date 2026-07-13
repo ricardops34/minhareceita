@@ -201,7 +201,7 @@ func (w *writer) Close() {
 }
 
 func newWriter(db database, graph graphWriter, kv *kv, srcs map[string]*source, batch int, privacy bool, ext string, src *source) (*writer, error) {
-	bar, err := newProgressBar("[3/3] Writing JSONs", 1)
+	bar, err := newProgressBar("[2/3] Writing JSONs", 1)
 	if err != nil {
 		return nil, fmt.Errorf("could not create a progress bar: %w", err)
 	}
