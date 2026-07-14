@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"text/template"
@@ -157,6 +158,7 @@ func (p *PostgreSQL) Drop() error {
 func (p *PostgreSQL) CreateCompanies(ctx context.Context, cs []company.Company) error {
 	b := make([][]any, len(cs))
 	var g errgroup.Group
+	g.SetLimit(runtime.NumCPU())
 	for i := range cs {
 		g.Go(func() error {
 			j, err := cs[i].JSON()
