@@ -3,6 +3,7 @@ package graph
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -27,7 +28,7 @@ func (w *Writer) Close() error {
 	return w.kv.Close()
 }
 
-func (w *Writer) Save(r *company.Relationship) error {
+func (w *Writer) Save(log *slog.Logger, r *company.Relationship) error {
 	c, err := r.EncodeCompany()
 	if err != nil {
 		return fmt.Errorf("failed to encode company metadata: %w", err)

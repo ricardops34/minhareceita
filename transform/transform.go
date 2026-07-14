@@ -80,7 +80,7 @@ type database interface {
 }
 
 type graphWriter interface {
-	Save(*company.Relationship) error
+	Save(*slog.Logger, *company.Relationship) error
 	Close() error
 	Path() string
 }

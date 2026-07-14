@@ -18,23 +18,29 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/encoding/charmap"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/schollz/progressbar/v3"
 )
 
 type writer struct {
-	db      database
-	graph   graphWriter
-	kv      *kv
+	db    database
+	graph graphWriter
+	kv    *kv
+	batch int
+
+	ext     string
+	src     *source
 	srcs    map[string]*source
-	batch   int
 	privacy bool
+
 	bar     *progressbar.ProgressBar
 	log     *slog.Logger
 	logFile *os.File
 	logPath string
-	src     *source
-	ext     string
-	once    sync.Once
+
+	once sync.Once
+	mu   sync.Mutex
+	seen map[uint64]struct{}
 }
 
 func (w *writer) write(ctx context.Context) error {
@@ -114,7 +120,7 @@ func (w *writer) saveBatch(ctx context.Context, b []company.Company) error {
 					case <-sctx.Done():
 						return sctx.Err()
 					default:
-						return w.graph.Save(r)
+						return w.graph.Save(w.log, r)
 					}
 				})
 			}
@@ -164,6 +170,20 @@ func (w *writer) processCSV(ctx context.Context, f *zip.File) error {
 			if w.privacy {
 				c.WithPrivacy()
 			}
+
+			h := xxhash.Sum64String(c.CNPJ)
+			w.mu.Lock()
+			_, ok := w.seen[h]
+			if !ok {
+				w.seen[h] = struct{}{}
+			}
+			w.mu.Unlock()
+
+			if ok {
+				w.log.Warn("Skipping duplicate CNPJ", "cnpj", c.CNPJ)
+				continue
+			}
+
 			b = append(b, *c)
 			if len(b) >= w.batch {
 				if err := w.saveBatch(ctx, b); err != nil {
@@ -224,5 +244,6 @@ func newWriter(db database, graph graphWriter, kv *kv, srcs map[string]*source, 
 		logPath: n,
 		src:     src,
 		ext:     ext,
+		seen:    make(map[uint64]struct{}, 1<<27),
 	}, nil
 }
