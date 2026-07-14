@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"strings"
 
@@ -28,6 +31,7 @@ var (
 	skipGraph bool
 	graphOnly bool
 	stream    bool
+	pprof     string
 )
 
 var transformCmd = &cobra.Command{
@@ -35,6 +39,15 @@ var transformCmd = &cobra.Command{
 	Short: "Transforms the CSV files into database records",
 	Long:  transformHelper,
 	RunE: func(_ *cobra.Command, _ []string) error {
+		if pprof != "" {
+			go func() {
+				slog.Info("Starting pprof server", "addr", pprof)
+				if err := http.ListenAndServe(pprof, nil); err != nil {
+					slog.Error("pprof server error", "error", err)
+					os.Exit(1)
+				}
+			}()
+		}
 		if skipGraph && graphOnly {
 			return fmt.Errorf("cannot use both --skip-graph and --graph-only")
 		}
@@ -103,6 +116,7 @@ func transformCLI() *cobra.Command {
 	transformCmd.Flags().IntVarP(&batchSize, "batch-size", "b", batchSize, "size of the batch to save to the database")
 	transformCmd.Flags().BoolVarP(&noPrivacy, "no-privacy", "p", noPrivacy, "include email addresses, CPF and other PII in the JSON data")
 	transformCmd.Flags().BoolVarP(&stream, "stream", "t", stream, "stream writes to the database instead of batching")
+	transformCmd.Flags().StringVar(&pprof, "pprof", "", "address to run pprof http server on (e.g. :6060), disabled by default")
 	transformCmd.Flags().BoolVarP(&args.PostgresLogged, "logged", "l", args.PostgresLogged, "avoids the disk overhead but writes slowly to the table (PostgreSQL only)")
 	return transformCmd
 }
