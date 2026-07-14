@@ -27,6 +27,7 @@ var (
 	noPrivacy bool
 	skipGraph bool
 	graphOnly bool
+	stream    bool
 )
 
 var transformCmd = &cobra.Command{
@@ -42,7 +43,7 @@ var transformCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			return transform.Transform(dir, nil, g, batchSize, !noPrivacy)
+			return transform.Transform(dir, nil, g, batchSize, !noPrivacy, stream)
 		}
 		args.SetURI(uri)
 		db, err := loadDatabase(&args)
@@ -59,13 +60,13 @@ var transformCmd = &cobra.Command{
 			}
 		}
 		if skipGraph {
-			return transform.Transform(dir, db, nil, batchSize, !noPrivacy)
+			return transform.Transform(dir, db, nil, batchSize, !noPrivacy, stream)
 		}
 		g, err := graph.NewWriter(graphPath)
 		if err != nil {
 			return err
 		}
-		return transform.Transform(dir, db, g, batchSize, !noPrivacy)
+		return transform.Transform(dir, db, g, batchSize, !noPrivacy, stream)
 	},
 }
 
@@ -101,6 +102,7 @@ func transformCLI() *cobra.Command {
 	transformCmd.Flags().BoolVarP(&graphOnly, "graph-only", "o", graphOnly, "only create the graph database")
 	transformCmd.Flags().IntVarP(&batchSize, "batch-size", "b", batchSize, "size of the batch to save to the database")
 	transformCmd.Flags().BoolVarP(&noPrivacy, "no-privacy", "p", noPrivacy, "include email addresses, CPF and other PII in the JSON data")
+	transformCmd.Flags().BoolVarP(&stream, "stream", "t", stream, "stream writes to the database instead of batching")
 	transformCmd.Flags().BoolVarP(&args.PostgresLogged, "logged", "l", args.PostgresLogged, "avoids the disk overhead but writes slowly to the table (PostgreSQL only)")
 	return transformCmd
 }

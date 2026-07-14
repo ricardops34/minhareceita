@@ -74,6 +74,7 @@ var extraCountries = map[int]string{
 type database interface {
 	PreLoad() error
 	CreateCompanies(context.Context, []company.Company) error
+	StreamCompanies(context.Context, <-chan company.Company) error
 	PostLoad() error
 	CreateExtraIndexes([]string) error
 	MetaSave(string, string) error
@@ -173,7 +174,7 @@ func findUpdatedAt(dir string) (string, error) {
 	return "", fmt.Errorf("could not find YYYY-MM file in %s", dir)
 }
 
-func Transform(dir string, db database, gw graphWriter, batch int, privacy bool) error {
+func Transform(dir string, db database, gw graphWriter, batch int, privacy bool, stream bool) error {
 	if db != nil {
 		if err := db.PreLoad(); err != nil {
 			return err
@@ -239,8 +240,15 @@ func Transform(dir string, db database, gw graphWriter, batch int, privacy bool)
 		return err
 	}
 	defer w.Close()
-	if err := w.write(ctx); err != nil {
-		return err
+
+	if stream {
+		if err := w.stream(ctx); err != nil {
+			return err
+		}
+	} else {
+		if err := w.write(ctx); err != nil {
+			return err
+		}
 	}
 	if gw != nil {
 		if err := gw.Close(); err != nil {

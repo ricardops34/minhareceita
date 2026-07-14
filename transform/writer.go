@@ -73,7 +73,7 @@ func (w *writer) write(ctx context.Context) error {
 			}
 			p := filepath.Join(w.dir, pth.Name())
 			ps.Go(func() error {
-				return w.process(ctx, p, ch)
+				return w.processBatches(ctx, p, ch)
 			})
 		}
 		return ps.Wait()
@@ -82,7 +82,67 @@ func (w *writer) write(ctx context.Context) error {
 	return g.Wait()
 }
 
-func (w *writer) process(ctx context.Context, pth string, ch chan<- []company.Company) error {
+func (w *writer) stream(ctx context.Context) error {
+	g, ctx := errgroup.WithContext(ctx)
+	ws := max(1, runtime.NumCPU())
+
+	var ch chan company.Company
+	if w.db != nil {
+		ch = make(chan company.Company, ws)
+		g.Go(func() error {
+			return w.db.StreamCompanies(ctx, ch)
+		})
+	}
+
+	var rel chan *company.Relationship
+	if w.graph != nil {
+		rel = make(chan *company.Relationship, ws)
+		g.Go(func() error {
+			s, sctx := errgroup.WithContext(ctx)
+			s.SetLimit(max(16, runtime.NumCPU())) // 16 is Badger internal limit
+			for r := range rel {
+				s.Go(func() error {
+					select {
+					case <-sctx.Done():
+						return sctx.Err()
+					default:
+						return w.graph.Save(w.log, r)
+					}
+				})
+			}
+			return s.Wait()
+		})
+	}
+
+	ls, err := os.ReadDir(w.dir)
+	if err != nil {
+		return fmt.Errorf("could not read directory %s: %w", w.dir, err)
+	}
+
+	g.Go(func() error {
+		if ch != nil {
+			defer close(ch)
+		}
+		if rel != nil {
+			defer close(rel)
+		}
+		var ps errgroup.Group
+		for _, pth := range ls {
+			if !strings.HasPrefix(pth.Name(), w.src.prefix) || strings.ToLower(filepath.Ext(pth.Name())) != ".zip" {
+				continue
+			}
+			p := filepath.Join(w.dir, pth.Name())
+			ps.Go(func() error {
+				return w.processStream(ctx, p, ch, rel)
+			})
+		}
+		return ps.Wait()
+	})
+
+	return g.Wait()
+}
+
+func (w *writer) processBatches(ctx context.Context, pth string, ch chan<- []company.Company) error {
 	a, err := zip.OpenReader(pth)
 	if err != nil {
 		return fmt.Errorf("could not open %s: %w", pth, err)
@@ -104,7 +164,38 @@ func (w *writer) process(ctx context.Context, pth string, ch chan<- []company.Co
 			continue
 		}
 		g.Go(func() error {
-			return w.processCSV(ctx, f, ch)
+			return w.batchCSV(ctx, f, ch)
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (w *writer) processStream(ctx context.Context, pth string, ch chan<- company.Company, rel chan<- *company.Relationship) error {
+	a, err := zip.OpenReader(pth)
+	if err != nil {
+		return fmt.Errorf("could not open %s: %w", pth, err)
+	}
+	defer func() {
+		if err := a.Close(); err != nil {
+			slog.Warn("could not close archive", "path", pth, "error", err)
+		}
+	}()
+	for _, f := range a.File {
+		w.bar.AddMax64(int64(f.UncompressedSize64))
+		w.once.Do(func() {
+			w.bar.AddMax(-1)
+		})
+	}
+	var g errgroup.Group
+	for _, f := range a.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		g.Go(func() error {
+			return w.streamCSV(ctx, f, ch, rel)
 		})
 	}
 	if err := g.Wait(); err != nil {
@@ -134,7 +225,7 @@ func (w *writer) saveBatch(ctx context.Context, b []company.Company) error {
 		})
 		g.Go(func() error {
 			s, ctx := errgroup.WithContext(ctx)
-			s.SetLimit(1024) // arbitrary (avoid spinning so many goroutines)
+			s.SetLimit(max(16, runtime.NumCPU())) // 16 is Badger internal limit
 			for r := range ch {
 				s.Go(func() error {
 					select {
@@ -151,7 +242,7 @@ func (w *writer) saveBatch(ctx context.Context, b []company.Company) error {
 	return g.Wait()
 }
 
-func (w *writer) processCSV(ctx context.Context, f *zip.File, ch chan<- []company.Company) error {
+func (w *writer) batchCSV(ctx context.Context, f *zip.File, ch chan<- []company.Company) error {
 	r, err := f.Open()
 	if err != nil {
 		return fmt.Errorf("could not read %s: %w", f.Name, err)
@@ -215,6 +306,76 @@ func (w *writer) processCSV(ctx context.Context, f *zip.File, ch chan<- []compan
 				}
 				b = make([]company.Company, 0, w.batch)
 			}
+			s := cr.read - prev
+			if s > 0 {
+				if err := w.bar.Add64(s); err != nil {
+					slog.Warn("could not update the progress bar", "error", err)
+				}
+			}
+			prev = cr.read
+		}
+	}
+}
+
+func (w *writer) streamCSV(ctx context.Context, f *zip.File, ch chan<- company.Company, rel chan<- *company.Relationship) error {
+	r, err := f.Open()
+	if err != nil {
+		return fmt.Errorf("could not read %s: %w", f.Name, err)
+	}
+	defer func() {
+		if err := r.Close(); err != nil {
+			slog.Warn("Could not close csv reader", "name", f.Name, "error", err)
+		}
+	}()
+	cr := countReader{r, 0}
+	csvr := csv.NewReader(charmap.ISO8859_15.NewDecoder().Reader(&cr))
+	csvr.Comma = w.src.sep
+	var prev int64
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			row, err := csvr.Read()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
+				return fmt.Errorf("error reading %s: %w", f.Name, err)
+			}
+			if len(row) < 2 {
+				return fmt.Errorf("unexpected row with %d columns in %s", len(row), w.src.prefix)
+			}
+			for n := range row {
+				row[n] = cleanupColumn(row[n])
+			}
+			c, err := newCompany(w.log, w.srcs, w.kv, row)
+			if err != nil {
+				return fmt.Errorf("could not create company %v: %w", row[:3], err)
+			}
+			if w.privacy {
+				c.WithPrivacy()
+			}
+
+			h := xxhash.Sum64String(c.CNPJ)
+			if w.seen.has(h) {
+				w.log.Warn("Skipping duplicate CNPJ", "cnpj", c.CNPJ)
+				continue
+			}
+			w.seen.add(h)
+
+			if rel != nil {
+				c.Relationships(rel)
+			}
+
+			if ch != nil {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case ch <- *c:
+				}
+			}
+
 			s := cr.read - prev
 			if s > 0 {
 				if err := w.bar.Add64(s); err != nil {

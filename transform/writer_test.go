@@ -33,6 +33,15 @@ func (db *testDB) CreateCompanies(_ context.Context, companies []company.Company
 	return nil
 }
 
+func (db *testDB) StreamCompanies(_ context.Context, ch <-chan company.Company) error {
+	for c := range ch {
+		db.lock.Lock()
+		db.data[c.CNPJ] = c
+		db.lock.Unlock()
+	}
+	return nil
+}
+
 func (db *testDB) PostLoad() error {
 	return nil
 }
@@ -84,6 +93,49 @@ func TestWriteJSONs(t *testing.T) {
 	}
 	defer w.Close()
 	err = w.write(ctx)
+	if err != nil {
+		t.Fatalf("expected no error processing test data, got %s", err)
+	}
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	if len(db.data) != 1 {
+		t.Errorf("expected 1 company to be persisted, got %d", len(db.data))
+	}
+	exp := "33683111000280"
+	if _, ok := db.data[exp]; !ok {
+		t.Errorf("expected CNPJ %s to be persisted, got nil", exp)
+	}
+	if graph.called.Load() != 6 {
+		t.Errorf("expected 6 relationships, got %d", graph.called.Load())
+	}
+}
+
+func TestStreamWriter(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	srcs := sources()
+	kv, err := newBadger(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("expected no error creating badger, got %s", err)
+	}
+	defer func() {
+		if err := kv.db.Close(); err != nil {
+			t.Errorf("expected no error closing badger, got %s", err)
+		}
+	}()
+	loadAllTestSources(t, kv)
+	db := &testDB{}
+	graph := &testGraph{}
+	if err := db.PreLoad(); err != nil {
+		t.Fatalf("expected no error calling PreLoad, got %s", err)
+	}
+	src := newCompanySrc("Estabelecimentos", ';', false, false)
+	w, err := newWriter(db, graph, kv, srcs, 8192, false, testdataDir, src)
+	if err != nil {
+		t.Fatalf("expected no error creating writer, got %s", err)
+	}
+	defer w.Close()
+	err = w.stream(ctx)
 	if err != nil {
 		t.Fatalf("expected no error processing test data, got %s", err)
 	}

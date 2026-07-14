@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/schollz/progressbar/v3"
@@ -115,6 +116,7 @@ func (c *reader) readArchivedCSV(ctx context.Context, bar *progressbar.ProgressB
 		}
 	}
 	var g errgroup.Group
+	g.SetLimit(max(16, runtime.NumCPU())) // 16 is Badger internal limit
 	for _, z := range a.File {
 		if z.FileInfo().IsDir() {
 			continue

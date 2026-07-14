@@ -184,6 +184,43 @@ func (p *PostgreSQL) CreateCompanies(ctx context.Context, cs []company.Company) 
 	return nil
 }
 
+type companyCopySource struct {
+	ch   <-chan company.Company
+	err  error
+	next []any
+}
+
+func (s *companyCopySource) Next() bool {
+	c, ok := <-s.ch
+	if !ok {
+		return false
+	}
+	j, err := c.JSON()
+	if err != nil {
+		s.err = err
+		return false
+	}
+	s.next = []any{c.CNPJ, string(j)}
+	return true
+}
+
+func (s *companyCopySource) Values() ([]any, error) { return s.next, s.err }
+func (s *companyCopySource) Err() error             { return s.err }
+
+// StreamCompanies performs a copy to create a stream of companies in the database.
+func (p *PostgreSQL) StreamCompanies(ctx context.Context, ch <-chan company.Company) error {
+	_, err := p.pool.CopyFrom(
+		ctx,
+		pgx.Identifier{p.CompanyTableName},
+		[]string{idFieldName, jsonFieldName},
+		&companyCopySource{ch: ch},
+	)
+	if err != nil {
+		return fmt.Errorf("error while streaming data to postgres: %w", err)
+	}
+	return nil
+}
+
 // GetCompany returns the JSON of a company based on a CNPJ number.
 func (p *PostgreSQL) GetCompany(ctx context.Context, id string) ([]byte, error) {
 	rows, err := p.pool.Query(ctx, p.getCompanyQuery, id)

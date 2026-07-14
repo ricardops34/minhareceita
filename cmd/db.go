@@ -17,6 +17,7 @@ type database interface {
 	// transform
 	PreLoad() error
 	CreateCompanies(context.Context, []company.Company) error
+	StreamCompanies(context.Context, <-chan company.Company) error
 	PostLoad() error
 	MetaSave(string, string) error
 
