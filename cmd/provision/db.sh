@@ -75,7 +75,9 @@ for i in $(seq 1 60); do
 done
 
 echo "==> Configuring remote access..."
-sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/' /etc/postgresql/18/main/postgresql.conf
+sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /etc/postgresql/18/main/postgresql.conf
+sudo sed -i "s/^#*wal_level.*/wal_level = replica/" /etc/postgresql/18/main/postgresql.conf
+sudo sed -i "/^wal_level/d" /var/lib/postgresql/18/main/postgresql.auto.conf 2>/dev/null || true
 if ! grep -q "^host\\s\\+all\\s\\+etl\\s" /etc/postgresql/18/main/pg_hba.conf; then
 	echo "host all etl 0.0.0.0/0 scram-sha-256" | sudo tee -a /etc/postgresql/18/main/pg_hba.conf >/dev/null
 fi
