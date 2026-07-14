@@ -9,6 +9,7 @@ import (
 
 	"codeberg.org/cuducos/minha-receita/company"
 	"github.com/dgraph-io/badger/v4"
+	"tangled.org/cuducos.me/go-cnpj"
 )
 
 var DefaultGraphPath = filepath.Join("data", "graph.db")
@@ -29,6 +30,9 @@ func (w *Writer) Close() error {
 }
 
 func (w *Writer) Save(log *slog.Logger, r *company.Relationship) error {
+	if r.PartnerType == 0 && !cnpj.IsValid(r.PartnerID) {
+		log.Warn("Invalid partner CNPJ", "company", r.CompanyID, "partner", r.PartnerID)
+	}
 	c, err := r.EncodeCompany()
 	if err != nil {
 		return fmt.Errorf("failed to encode company metadata: %w", err)
