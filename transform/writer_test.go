@@ -2,6 +2,7 @@ package transform
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -49,7 +50,7 @@ func (db *testDB) MetaSave(key, value string) error {
 
 type testGraph struct{ called atomic.Uint32 }
 
-func (g *testGraph) Save(r *company.Relationship) error {
+func (g *testGraph) Save(_ *slog.Logger, _ *company.Relationship) error {
 	g.called.Add(1)
 	return nil
 }

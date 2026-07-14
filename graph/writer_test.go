@@ -43,7 +43,7 @@ func TestWriter(t *testing.T) {
 	}()
 
 	for _, r := range data {
-		if err := w.Save(&r); err != nil {
+		if err := w.Save(nil, &r); err != nil {
 			t.Errorf("expected no error saving relationship, got %q", err)
 		}
 	}

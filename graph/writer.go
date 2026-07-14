@@ -30,7 +30,7 @@ func (w *Writer) Close() error {
 }
 
 func (w *Writer) Save(log *slog.Logger, r *company.Relationship) error {
-	if r.PartnerType == 0 && !cnpj.IsValid(r.PartnerID) {
+	if r.PartnerType == 0 && !cnpj.IsValid(r.PartnerID) && log != nil {
 		log.Warn("Invalid partner CNPJ", "company", r.CompanyID, "partner", r.PartnerID)
 	}
 	c, err := r.EncodeCompany()

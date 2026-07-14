@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -28,7 +29,7 @@ type writer struct {
 	kv    *kv
 	batch int
 
-	ext     string
+	dir     string
 	src     *source
 	srcs    map[string]*source
 	privacy bool
@@ -39,29 +40,49 @@ type writer struct {
 	logPath string
 
 	once sync.Once
-	mu   sync.Mutex
-	seen map[uint64]struct{}
+	seen *hashSet
 }
 
 func (w *writer) write(ctx context.Context) error {
-	pths, err := os.ReadDir(w.ext)
-	if err != nil {
-		return fmt.Errorf("could not read directory %s: %w", w.ext, err)
-	}
-	var g errgroup.Group
-	for _, pth := range pths {
-		if !strings.HasPrefix(pth.Name(), w.src.prefix) || filepath.Ext(pth.Name()) != ".zip" {
-			continue
-		}
-		p := filepath.Join(w.ext, pth.Name())
+	g, ctx := errgroup.WithContext(ctx)
+	ws := max(1, runtime.NumCPU())
+	ch := make(chan []company.Company, ws)
+
+	for range ws {
 		g.Go(func() error {
-			return w.process(ctx, p)
+			for b := range ch {
+				if err := w.saveBatch(ctx, b); err != nil {
+					return err
+				}
+			}
+			return nil
 		})
 	}
+
+	ls, err := os.ReadDir(w.dir)
+	if err != nil {
+		return fmt.Errorf("could not read directory %s: %w", w.dir, err)
+	}
+
+	g.Go(func() error {
+		defer close(ch)
+		var ps errgroup.Group
+		for _, pth := range ls {
+			if !strings.HasPrefix(pth.Name(), w.src.prefix) || strings.ToLower(filepath.Ext(pth.Name())) != ".zip" {
+				continue
+			}
+			p := filepath.Join(w.dir, pth.Name())
+			ps.Go(func() error {
+				return w.process(ctx, p, ch)
+			})
+		}
+		return ps.Wait()
+	})
+
 	return g.Wait()
 }
 
-func (w *writer) process(ctx context.Context, pth string) error {
+func (w *writer) process(ctx context.Context, pth string, ch chan<- []company.Company) error {
 	a, err := zip.OpenReader(pth)
 	if err != nil {
 		return fmt.Errorf("could not open %s: %w", pth, err)
@@ -83,7 +104,7 @@ func (w *writer) process(ctx context.Context, pth string) error {
 			continue
 		}
 		g.Go(func() error {
-			return w.processCSV(ctx, f)
+			return w.processCSV(ctx, f, ch)
 		})
 	}
 	if err := g.Wait(); err != nil {
@@ -112,13 +133,13 @@ func (w *writer) saveBatch(ctx context.Context, b []company.Company) error {
 			return nil
 		})
 		g.Go(func() error {
-			s, sctx := errgroup.WithContext(ctx)
+			s, ctx := errgroup.WithContext(ctx)
 			s.SetLimit(1024) // arbitrary (avoid spinning so many goroutines)
 			for r := range ch {
 				s.Go(func() error {
 					select {
-					case <-sctx.Done():
-						return sctx.Err()
+					case <-ctx.Done():
+						return ctx.Err()
 					default:
 						return w.graph.Save(w.log, r)
 					}
@@ -130,7 +151,7 @@ func (w *writer) saveBatch(ctx context.Context, b []company.Company) error {
 	return g.Wait()
 }
 
-func (w *writer) processCSV(ctx context.Context, f *zip.File) error {
+func (w *writer) processCSV(ctx context.Context, f *zip.File, ch chan<- []company.Company) error {
 	r, err := f.Open()
 	if err != nil {
 		return fmt.Errorf("could not read %s: %w", f.Name, err)
@@ -153,7 +174,14 @@ func (w *writer) processCSV(ctx context.Context, f *zip.File) error {
 			row, err := csvr.Read()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
-					return w.saveBatch(ctx, b)
+					if len(b) > 0 {
+						select {
+						case <-ctx.Done():
+							return ctx.Err()
+						case ch <- b:
+						}
+					}
+					return nil
 				}
 				return fmt.Errorf("error reading %s: %w", f.Name, err)
 			}
@@ -172,24 +200,20 @@ func (w *writer) processCSV(ctx context.Context, f *zip.File) error {
 			}
 
 			h := xxhash.Sum64String(c.CNPJ)
-			w.mu.Lock()
-			_, ok := w.seen[h]
-			if !ok {
-				w.seen[h] = struct{}{}
-			}
-			w.mu.Unlock()
-
-			if ok {
+			if w.seen.has(h) {
 				w.log.Warn("Skipping duplicate CNPJ", "cnpj", c.CNPJ)
 				continue
 			}
+			w.seen.add(h)
 
 			b = append(b, *c)
 			if len(b) >= w.batch {
-				if err := w.saveBatch(ctx, b); err != nil {
-					return err
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case ch <- b:
 				}
-				b = b[:0]
+				b = make([]company.Company, 0, w.batch)
 			}
 			s := cr.read - prev
 			if s > 0 {
@@ -243,7 +267,7 @@ func newWriter(db database, graph graphWriter, kv *kv, srcs map[string]*source, 
 		logFile: f,
 		logPath: n,
 		src:     src,
-		ext:     ext,
-		seen:    make(map[uint64]struct{}, 1<<27),
+		dir:     ext,
+		seen:    newHashSet(1 << 26),
 	}, nil
 }
