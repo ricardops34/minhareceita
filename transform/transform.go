@@ -194,7 +194,7 @@ func Transform(dir string, db database, gw graphWriter, batch int, privacy bool,
 			slog.Warn("could not remove temporary directory", "path", tmp, "error", err)
 		}
 	}()
-	kv, err := newBadger(tmp, false)
+	kv, err := newBadger(filepath.Join(tmp, "lookup"), false)
 	if err != nil {
 		return fmt.Errorf("could not create badger database: %w", err)
 	}
@@ -203,6 +203,11 @@ func Transform(dir string, db database, gw graphWriter, batch int, privacy bool,
 			slog.Warn("could not close badger database", "error", err)
 		}
 	}()
+	seen, err := newSeenDB(filepath.Join(tmp, "seen"))
+	if err != nil {
+		return fmt.Errorf("could not create seen badger database: %w", err)
+	}
+	defer seen.close()
 	bar, err := newProgressBar("[1/3] Loading data to key-value storage", len(srcs))
 	if err != nil {
 		return fmt.Errorf("could not create a progress bar: %w", err)
@@ -235,7 +240,7 @@ func Transform(dir string, db database, gw graphWriter, batch int, privacy bool,
 		return fmt.Errorf("could not flush key-value storage: %w", err)
 	}
 	src := newCompanySrc("Estabelecimentos", ';', false, false)
-	w, err := newWriter(db, gw, kv, srcs, batch, privacy, dir, src)
+	w, err := newWriter(db, gw, kv, seen, srcs, batch, privacy, dir, src)
 	if err != nil {
 		return err
 	}

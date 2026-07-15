@@ -16,11 +16,9 @@ import (
 	"time"
 
 	"codeberg.org/cuducos/minha-receita/company"
+	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/encoding/charmap"
-
-	"github.com/cespare/xxhash/v2"
-	"github.com/schollz/progressbar/v3"
 )
 
 type writer struct {
@@ -40,7 +38,7 @@ type writer struct {
 	logPath string
 
 	once sync.Once
-	seen *hashSet
+	seen *seenDB
 }
 
 func (w *writer) write(ctx context.Context) error {
@@ -67,6 +65,7 @@ func (w *writer) write(ctx context.Context) error {
 	g.Go(func() error {
 		defer close(ch)
 		var ps errgroup.Group
+		ps.SetLimit(max(1, runtime.NumCPU()))
 		for _, pth := range ls {
 			if !strings.HasPrefix(pth.Name(), w.src.prefix) || strings.ToLower(filepath.Ext(pth.Name())) != ".zip" {
 				continue
@@ -127,6 +126,7 @@ func (w *writer) stream(ctx context.Context) error {
 			defer close(rel)
 		}
 		var ps errgroup.Group
+		ps.SetLimit(max(1, runtime.NumCPU()))
 		for _, pth := range ls {
 			if !strings.HasPrefix(pth.Name(), w.src.prefix) || strings.ToLower(filepath.Ext(pth.Name())) != ".zip" {
 				continue
@@ -159,6 +159,7 @@ func (w *writer) processBatches(ctx context.Context, pth string, ch chan<- []com
 		})
 	}
 	var g errgroup.Group
+	g.SetLimit(max(1, runtime.NumCPU()))
 	for _, f := range a.File {
 		if f.FileInfo().IsDir() {
 			continue
@@ -190,6 +191,7 @@ func (w *writer) processStream(ctx context.Context, pth string, ch chan<- compan
 		})
 	}
 	var g errgroup.Group
+	g.SetLimit(max(1, runtime.NumCPU()))
 	for _, f := range a.File {
 		if f.FileInfo().IsDir() {
 			continue
@@ -290,12 +292,14 @@ func (w *writer) batchCSV(ctx context.Context, f *zip.File, ch chan<- []company.
 				c.WithPrivacy()
 			}
 
-			h := xxhash.Sum64String(c.CNPJ)
-			if w.seen.has(h) {
+			ok, err := w.seen.check(c.CNPJ)
+			if err != nil {
+				return err
+			}
+			if ok {
 				w.log.Warn("Skipping duplicate CNPJ", "cnpj", c.CNPJ)
 				continue
 			}
-			w.seen.add(h)
 
 			b = append(b, *c)
 			if len(b) >= w.batch {
@@ -357,12 +361,14 @@ func (w *writer) streamCSV(ctx context.Context, f *zip.File, ch chan<- company.C
 				c.WithPrivacy()
 			}
 
-			h := xxhash.Sum64String(c.CNPJ)
-			if w.seen.has(h) {
+			ok, err := w.seen.check(c.CNPJ)
+			if err != nil {
+				return err
+			}
+			if ok {
 				w.log.Warn("Skipping duplicate CNPJ", "cnpj", c.CNPJ)
 				continue
 			}
-			w.seen.add(h)
 
 			if rel != nil {
 				c.Relationships(rel)
@@ -405,7 +411,7 @@ func (w *writer) Close() {
 	}
 }
 
-func newWriter(db database, graph graphWriter, kv *kv, srcs map[string]*source, batch int, privacy bool, ext string, src *source) (*writer, error) {
+func newWriter(db database, graph graphWriter, kv *kv, seen *seenDB, srcs map[string]*source, batch int, privacy bool, ext string, src *source) (*writer, error) {
 	bar, err := newProgressBar("[2/3] Writing JSONs", 1)
 	if err != nil {
 		return nil, fmt.Errorf("could not create a progress bar: %w", err)
@@ -429,6 +435,6 @@ func newWriter(db database, graph graphWriter, kv *kv, srcs map[string]*source, 
 		logPath: n,
 		src:     src,
 		dir:     ext,
-		seen:    newHashSet(1 << 26),
+		seen:    seen,
 	}, nil
 }

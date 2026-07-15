@@ -3,16 +3,12 @@ package transform
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
+	"github.com/dgraph-io/badger/v4"
 	"io"
 	"log/slog"
 	"os"
 	"sync"
-
-	"github.com/cespare/xxhash/v2"
-	"github.com/dgraph-io/badger/v4"
-	"github.com/dgraph-io/ristretto/v2"
 )
 
 // As of 2025-11 the longest sequence we've got was 257, so setting it to 512 to
@@ -21,10 +17,9 @@ import (
 const defaultPoolSize = 512
 
 type kv struct {
-	db    *badger.DB
-	wb    *badger.WriteBatch
-	pool  sync.Pool
-	cache *ristretto.Cache[uint64, []string]
+	db   *badger.DB
+	wb   *badger.WriteBatch
+	pool sync.Pool
 }
 
 func (kv *kv) serialize(row []string) ([]byte, error) {
@@ -98,11 +93,6 @@ func (kv *kv) flush() error {
 }
 
 func (kv *kv) get(k []byte) ([]string, error) {
-	h := xxhash.Sum64(k)
-	if out, ok := kv.cache.Get(h); ok {
-		return out, nil
-	}
-
 	val := kv.pool.Get().(*[]byte)
 	*val = (*val)[:0]
 	defer kv.pool.Put(val)
@@ -128,11 +118,6 @@ func (kv *kv) get(k []byte) ([]string, error) {
 		return nil, err
 	}
 
-	var t int64
-	for _, v := range out {
-		t += int64(len(v))
-	}
-	kv.cache.Set(h, out, t)
 	return out, nil
 }
 
@@ -171,7 +156,13 @@ func (*noLogger) Infof(string, ...any)    {}
 func (*noLogger) Debugf(string, ...any)   {}
 
 func newBadger(dir string, ro bool) (*kv, error) {
-	opt := badger.DefaultOptions(dir).WithReadOnly(ro).WithBypassLockGuard(true).WithDetectConflicts(false)
+	opt := badger.DefaultOptions(dir).
+		WithReadOnly(ro).
+		WithBypassLockGuard(true).
+		WithDetectConflicts(false).
+		WithBlockCacheSize(1 << 24).
+		WithIndexCacheSize(1 << 27).
+		WithMemTableSize(1 << 25)
 	slog.Debug("Creating temporary key-value storage", "path", dir)
 	if os.Getenv("DEBUG") == "" {
 		opt = opt.WithLogger(&noLogger{})
@@ -189,14 +180,6 @@ func newBadger(dir string, ro bool) (*kv, error) {
 				return &b
 			},
 		},
-	}
-	kv.cache, err = ristretto.NewCache(&ristretto.Config[uint64, []string]{
-		MaxCost:     1 << 30,
-		NumCounters: 1 << 23,
-		BufferItems: 1 << 6,
-	})
-	if err != nil {
-		return nil, errors.Join(fmt.Errorf("could not create cache: %w", err), db.Close())
 	}
 	return kv, nil
 }

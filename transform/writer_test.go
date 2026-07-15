@@ -3,6 +3,7 @@ package transform
 import (
 	"context"
 	"log/slog"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -87,7 +88,12 @@ func TestWriteJSONs(t *testing.T) {
 		t.Fatalf("expected no error calling PreLoad, got %s", err)
 	}
 	src := newCompanySrc("Estabelecimentos", ';', false, false)
-	w, err := newWriter(db, graph, kv, srcs, 8192, false, testdataDir, src)
+	s, err := newSeenDB(filepath.Join(t.TempDir(), "seen"))
+	if err != nil {
+		t.Fatalf("expected no error creating seen badger, got %s", err)
+	}
+	defer s.close()
+	w, err := newWriter(db, graph, kv, s, srcs, 8192, false, testdataDir, src)
 	if err != nil {
 		t.Fatalf("expected no error creating writer, got %s", err)
 	}
@@ -130,7 +136,12 @@ func TestStreamWriter(t *testing.T) {
 		t.Fatalf("expected no error calling PreLoad, got %s", err)
 	}
 	src := newCompanySrc("Estabelecimentos", ';', false, false)
-	w, err := newWriter(db, graph, kv, srcs, 8192, false, testdataDir, src)
+	s, err := newSeenDB(filepath.Join(t.TempDir(), "seen"))
+	if err != nil {
+		t.Fatalf("expected no error creating seen badger, got %s", err)
+	}
+	defer s.close()
+	w, err := newWriter(db, graph, kv, s, srcs, 8192, false, testdataDir, src)
 	if err != nil {
 		t.Fatalf("expected no error creating writer, got %s", err)
 	}
