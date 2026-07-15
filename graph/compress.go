@@ -34,7 +34,7 @@ func Compress(path string, bar *progressbar.ProgressBar) error {
 		return fmt.Errorf("could not calculate graph size: %w", err)
 	}
 
-	f, err := os.Create(path + ".tar.gz")
+	f, err := os.Create(filepath.Join(filepath.Dir(filepath.Clean(path)), "graph.tar.gz"))
 	if err != nil {
 		return fmt.Errorf("could not create tar.gz file: %w", err)
 	}
@@ -64,7 +64,7 @@ func Compress(path string, bar *progressbar.ProgressBar) error {
 		}
 	}()
 
-	n := filepath.Base(path)
+	n := "graph.db"
 	err = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -119,8 +119,8 @@ func Compress(path string, bar *progressbar.ProgressBar) error {
 	return os.RemoveAll(path)
 }
 
-// Decompress extracts a .tar.gz archive into a directory next to it (without the
-// .tar.gz suffix) and returns the path to that directory. The archive is kept.
+// Decompress extracts a .tar.gz archive into a directory next to it and returns
+// the path to the extracted root directory. The archive is kept.
 func Decompress(pth string) (string, error) {
 	dir := strings.TrimSuffix(pth, ".tar.gz")
 	f, err := os.Open(pth)
@@ -141,6 +141,7 @@ func Decompress(pth string) (string, error) {
 			slog.Warn("could not close gzip reader", "error", err)
 		}
 	}()
+	var out string
 	t := tar.NewReader(g)
 	for {
 		h, err := t.Next()
@@ -149,6 +150,12 @@ func Decompress(pth string) (string, error) {
 		}
 		if err != nil {
 			return "", fmt.Errorf("could not read tar header: %w", err)
+		}
+		if out == "" {
+			parts := strings.Split(filepath.ToSlash(h.Name), "/")
+			if len(parts) > 0 {
+				out = filepath.Join(filepath.Dir(dir), parts[0])
+			}
 		}
 		target := filepath.Join(filepath.Dir(dir), h.Name)
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
@@ -174,5 +181,8 @@ func Decompress(pth string) (string, error) {
 			slog.Warn("could not close file", "path", target, "error", err)
 		}
 	}
-	return dir, nil
+	if out == "" {
+		out = dir
+	}
+	return out, nil
 }
