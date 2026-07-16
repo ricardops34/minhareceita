@@ -153,6 +153,15 @@ func (m *MongoDB) MetaRead(k string) (string, error) {
 	return result.Value, nil
 }
 
+// CompanyCount returns the number of companies currently loaded.
+func (m *MongoDB) CompanyCount(ctx context.Context) (int64, error) {
+	count, err := m.db.Collection(companyTableName).CountDocuments(ctx, bson.M{})
+	if err != nil {
+		return 0, fmt.Errorf("error counting companies: %w", err)
+	}
+	return count, nil
+}
+
 // Close terminates the connection to MongoDB.
 func (m *MongoDB) Close() {
 	if err := m.client.Disconnect(context.Background()); err != nil {
@@ -240,6 +249,14 @@ func (m *MongoDB) Search(ctx context.Context, q *Query) ([]byte, error) {
 	coll := m.db.Collection(companyTableName)
 	f := bson.M{}
 	var ors []bson.M
+	if q.ActiveOnly {
+		f["json.situacao_cadastral"] = 2
+	}
+	if len(q.Bairro) == 1 {
+		f["json.bairro"] = q.Bairro[0]
+	} else if len(q.Bairro) > 1 {
+		f["json.bairro"] = bson.M{"$in": q.Bairro}
+	}
 	if len(q.UF) > 0 {
 		if len(q.UF) == 1 {
 			f["json.uf"] = q.UF[0]
@@ -259,6 +276,11 @@ func (m *MongoDB) Search(ctx context.Context, q *Query) ([]byte, error) {
 				{"json.codigo_municipio_ibge": bson.M{"$in": q.Municipio}},
 			}})
 		}
+	}
+	if len(q.MunicipioNome) == 1 {
+		f["json.municipio"] = q.MunicipioNome[0]
+	} else if len(q.MunicipioNome) > 1 {
+		f["json.municipio"] = bson.M{"$in": q.MunicipioNome}
 	}
 	if len(q.NaturezaJuridica) > 0 {
 		if len(q.NaturezaJuridica) == 1 {

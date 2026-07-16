@@ -249,6 +249,16 @@ func (p *PostgreSQL) searchQuery(q *Query) *sqlbuilder.SelectBuilder {
 			b.Where(b.GreaterThan(p.CursorFieldName, c))
 		}
 	}
+	if q.ActiveOnly {
+		b.Where("json ->> 'situacao_cadastral' = '2'")
+	}
+	if len(q.Bairro) > 0 {
+		conditions := make([]string, len(q.Bairro))
+		for i, value := range q.Bairro {
+			conditions[i] = b.Equal("json ->> 'bairro'", value)
+		}
+		b.Where(b.Or(conditions...))
+	}
 	if len(q.UF) > 0 {
 		c := make([]string, len(q.UF))
 		for i, v := range q.UF {
@@ -263,6 +273,13 @@ func (p *PostgreSQL) searchQuery(q *Query) *sqlbuilder.SelectBuilder {
 			c[i+len(q.Municipio)] = fmt.Sprintf("json -> 'codigo_municipio_ibge' = '%d'::jsonb", v)
 		}
 		b.Where(b.Or(c...))
+	}
+	if len(q.MunicipioNome) > 0 {
+		conditions := make([]string, len(q.MunicipioNome))
+		for i, value := range q.MunicipioNome {
+			conditions[i] = b.Equal("json ->> 'municipio'", value)
+		}
+		b.Where(b.Or(conditions...))
 	}
 	if len(q.NaturezaJuridica) > 0 {
 		c := make([]string, len(q.NaturezaJuridica))
@@ -382,6 +399,15 @@ func (p *PostgreSQL) MetaRead(k string) (string, error) {
 		return "", fmt.Errorf("error reading for metadata key %s: %w", k, err)
 	}
 	return v, nil
+}
+
+// CompanyCount returns the number of companies currently loaded.
+func (p *PostgreSQL) CompanyCount(ctx context.Context) (int64, error) {
+	var count int64
+	if err := p.pool.QueryRow(ctx, "SELECT COUNT(*) FROM cnpj").Scan(&count); err != nil {
+		return 0, fmt.Errorf("error counting companies: %w", err)
+	}
+	return count, nil
 }
 
 // CreateExtraIndexes responsible for creating additional indexes in the database

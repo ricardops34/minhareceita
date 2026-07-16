@@ -17,3 +17,9 @@ API web para consulta de informações do CNPJ (Cadastro Nacional da Pessoa Jur�
 [Métricas do servidor](https://metrics.cuducos.me/d/minha-receita)
 
 </div>
+
+## Sobre este fork
+
+Este repositório é um fork do projeto livre [Minha Receita](https://codeberg.org/cuducos/minha-receita), criado e mantido originalmente por [Álvaro Justen (cuducos)](https://codeberg.org/cuducos). Todo o crédito pelo projeto original permanece com seus autores e colaboradores.
+
+As alterações deste fork adicionam recursos locais de administração, autenticação, documentação OpenAPI/Swagger e consultas regionais por CNAE. O código continua distribuído sob os termos da licença original do projeto.

@@ -52,10 +52,13 @@ func parseURLParamsToUInt(q []string) []uint32 {
 }
 
 type Query struct {
+	ActiveOnly       bool
+	Bairro           []string
 	CNAE             []uint32
 	CNAEFiscal       []uint32
 	CNPF             []string // CNPJ or CPF in the QSA
 	Municipio        []uint32 // IBGE or SIAFI
+	MunicipioNome    []string
 	NaturezaJuridica []uint32
 	UF               []string
 	Cursor           *string
@@ -63,12 +66,28 @@ type Query struct {
 }
 
 func (q *Query) empty() bool {
-	return len(q.CNAE) == 0 &&
+	return !q.ActiveOnly &&
+		len(q.Bairro) == 0 &&
+		len(q.CNAE) == 0 &&
 		len(q.CNAEFiscal) == 0 &&
 		len(q.CNPF) == 0 &&
 		len(q.Municipio) == 0 &&
+		len(q.MunicipioNome) == 0 &&
 		len(q.NaturezaJuridica) == 0 &&
 		len(q.UF) == 0
+}
+
+func parseTextParams(q []string) []string {
+	var result []string
+	for _, value := range q {
+		for item := range strings.SplitSeq(value, ",") {
+			item = strings.ToUpper(strings.TrimSpace(item))
+			if item != "" && len(item) <= 100 {
+				result = append(result, item)
+			}
+		}
+	}
+	return result
 }
 
 func (q *Query) CursorAsInt() (int, error) {
@@ -84,8 +103,10 @@ func (q *Query) CursorAsInt() (int, error) {
 
 func NewQuery(v url.Values) *Query {
 	q := Query{
+		Bairro:           parseTextParams(v["bairro"]),
 		UF:               parseURLParams(v["uf"]),
 		Municipio:        parseURLParamsToUInt(v["municipio"]),
+		MunicipioNome:    parseTextParams(v["municipio_nome"]),
 		CNPF:             parseURLParams(v["cnpf"]),
 		CNAE:             parseURLParamsToUInt(v["cnae"]),
 		CNAEFiscal:       parseURLParamsToUInt(v["cnae_fiscal"]),

@@ -1,5 +1,7 @@
 # Como usar
 
+Todos os endpoints da API exigem o token configurado em `API_TOKEN`. Envie-o no cabeçalho `Authorization: Bearer <token>` ou `X-API-Key: <token>`.
+
 !!! info "URL"
     Nos exemplos a seguir, substituta `https://minhareceita.org` por `http://0.0.0.0:8000` caso esteja rodando o servidor localmente.
 
@@ -261,6 +263,20 @@ Com uma resposta dessas do exemplo, para requisitar a próxima página, basta ad
 Quando a resposta estievr sem `cursor`, isso significa que é a última página da busca.
 
 ## _Endpoints_ auxiliares
+
+## Busca regional de CNPJs ativos
+
+O endpoint `GET /cnae` retorna somente os números de CNPJ ativos de uma região. Os parâmetros `cnae`, `estado` e `municipio` são obrigatórios; `bairro` é opcional. O município pode ser informado pelo nome, código IBGE ou código SIAFI.
+
+```http
+GET /cnae?cnae=6204000&estado=SP&municipio=3550308&bairro=BELA%20VISTA&limit=100
+```
+
+```json
+{"data":["19131243000197"],"cursor":"42"}
+```
+
+Para obter a próxima página, repita os filtros acrescentando o `cursor` retornado. O `limit` padrão é 100 e aceita valores de 1 a 1.000.
 
 Para todos esses _endpoints_ é esperada resposta com status `200`:
 

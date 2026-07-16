@@ -36,9 +36,13 @@ func (mockDatabase) Search(ctx context.Context, q *db.Query) ([]byte, error) { r
 
 func (mockDatabase) MetaRead(k string) (string, error) { return "42", nil }
 
+func (mockDatabase) MetaSave(string, string) error { return nil }
+
 func (mockDatabase) AllCompanies(ctx context.Context, cursor *string, limit uint32) ([]string, *string, error) {
 	return nil, nil, nil
 }
+
+func (mockDatabase) CompanyCount(context.Context) (int64, error) { return 1, nil }
 
 func TestCompanyHandler(t *testing.T) {
 	t.Parallel()
@@ -195,6 +199,87 @@ func TestInvalidCNPJResponseIsValidJSON(t *testing.T) {
 }
 
 type transientErrorDatabase struct{ mockDatabase }
+
+type regionalMockDatabase struct {
+	mockDatabase
+	query *db.Query
+}
+
+func (d *regionalMockDatabase) Search(_ context.Context, q *db.Query) ([]byte, error) {
+	d.query = q
+	return []byte(`{"data":[{"cnpj":"19131243000197"}],"cursor":"42"}`), nil
+}
+
+func TestRegionalCNPJHandler(t *testing.T) {
+	t.Parallel()
+	d := &regionalMockDatabase{}
+	app := api{db: d}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/cnpjs?cnae=6204000&estado=sp&municipio=3550308&bairro=Bela+Vista&limit=25", nil)
+	response := httptest.NewRecorder()
+	http.HandlerFunc(app.regionalCNPJHandler).ServeHTTP(response, req)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if got := response.Body.String(); got != `{"data":["19131243000197"],"cursor":"42"}` {
+		t.Fatalf("unexpected response: %s", got)
+	}
+	if d.query == nil || !d.query.ActiveOnly || d.query.Limit != 25 {
+		t.Fatal("expected an active-only paginated query")
+	}
+	if len(d.query.Bairro) != 1 || d.query.Bairro[0] != "BELA VISTA" {
+		t.Fatalf("unexpected neighborhood filter: %#v", d.query.Bairro)
+	}
+}
+
+func TestRegionalCNPJHandlerValidation(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{
+		"/api/v1/cnpjs",
+		"/api/v1/cnpjs?cnae=123&estado=SP&municipio=3550308",
+		"/api/v1/cnpjs?cnae=6204000&estado=XX&municipio=3550308",
+		"/api/v1/cnpjs?cnae=6204000&estado=SP&municipio=",
+		"/api/v1/cnpjs?cnae=6204000&estado=SP&municipio=3550308&limit=1001",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		response := httptest.NewRecorder()
+		http.HandlerFunc((&api{db: &mockDatabase{}}).regionalCNPJHandler).ServeHTTP(response, req)
+		if response.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400 for %s, got %d", path, response.Code)
+		}
+	}
+}
+
+func TestAPITokenWrapper(t *testing.T) {
+	t.Parallel()
+	app := api{token: "secret-token"}
+	app.authRequired.Store(true)
+	handler := app.apiTokenWrapper(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+
+	for _, tc := range []struct {
+		name   string
+		header string
+		value  string
+		status int
+	}{
+		{"missing", "", "", http.StatusUnauthorized},
+		{"invalid", "Authorization", "Bearer wrong", http.StatusUnauthorized},
+		{"bearer", "Authorization", "Bearer secret-token", http.StatusNoContent},
+		{"api key", "X-API-Key", "secret-token", http.StatusNoContent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+			if tc.header != "" {
+				req.Header.Set(tc.header, tc.value)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, req)
+			if response.Code != tc.status {
+				t.Fatalf("expected status %d, got %d", tc.status, response.Code)
+			}
+		})
+	}
+}
 
 func (d *transientErrorDatabase) GetCompany(ctx context.Context, n string) ([]byte, error) {
 	d.calls++

@@ -1,0 +1,43 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Minha Receita API",
+    "version": "1.0.0",
+    "description": "Consulta local de dados do CNPJ. Use Authorize para informar o Bearer token ou X-API-Key exibido no painel administrativo."
+  },
+  "servers": [{"url": "http://localhost:8000", "description": "Servidor local"}],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "API token"},
+      "ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "X-API-Key"}
+    },
+    "schemas": {
+      "Error": {"type": "object", "properties": {"message": {"type": "string"}}, "required": ["message"]},
+      "CNPJPage": {"type": "object", "properties": {"data": {"type": "array", "items": {"type": "string", "pattern": "^[0-9]{14}$"}}, "cursor": {"type": ["string", "null"]}}, "required": ["data", "cursor"]}
+    }
+  },
+  "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
+  "paths": {
+    "/cnae": {
+      "get": {
+        "summary": "Busca CNPJs ativos por região e CNAE",
+        "description": "Retorna somente CNPJs com situação cadastral ATIVA. O CNAE pode ser principal ou secundário.",
+        "parameters": [
+          {"name": "cnae", "in": "query", "required": true, "schema": {"type": "string", "pattern": "^[0-9]{7}$"}, "example": "6204000"},
+          {"name": "estado", "in": "query", "required": true, "schema": {"type": "string", "minLength": 2, "maxLength": 2}, "example": "SP"},
+          {"name": "municipio", "in": "query", "required": true, "description": "Nome, código IBGE ou SIAFI", "schema": {"type": "string"}, "example": "3550308"},
+          {"name": "bairro", "in": "query", "required": false, "schema": {"type": "string"}, "example": "BELA VISTA"},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 100}},
+          {"name": "cursor", "in": "query", "required": false, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "Página de CNPJs", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CNPJPage"}}}}, "400": {"description": "Parâmetros inválidos", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "401": {"description": "Token ausente ou inválido"}}
+      }
+    },
+    "/{cnpj}": {
+      "get": {"summary": "Consulta um CNPJ", "parameters": [{"name": "cnpj", "in": "path", "required": true, "schema": {"type": "string", "pattern": "^[0-9]{14}$"}, "example": "15497290000106"}], "responses": {"200": {"description": "Cadastro da empresa"}, "404": {"description": "CNPJ não encontrado"}}}
+    },
+    "/updated": {"get": {"summary": "Competência da base", "responses": {"200": {"description": "Data da atualização"}, "500": {"description": "Base ainda não importada"}}}},
+    "/healthz": {"get": {"summary": "Saúde da API", "responses": {"200": {"description": "Serviço saudável"}}}},
+    "/metrics": {"get": {"summary": "Métricas Prometheus", "responses": {"200": {"description": "Métricas em texto"}}}}
+  }
+}

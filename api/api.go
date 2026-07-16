@@ -6,13 +6,18 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
+	"embed"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"codeberg.org/cuducos/minha-receita/bloom"
@@ -34,8 +39,13 @@ type database interface {
 	GetCompany(context.Context, string) ([]byte, error)
 	Search(context.Context, *db.Query) ([]byte, error)
 	MetaRead(string) (string, error)
+	MetaSave(string, string) error
 	AllCompanies(context.Context, *string, uint32) ([]string, *string, error)
+	CompanyCount(context.Context) (int64, error)
 }
+
+//go:embed admin.html login.html swagger.html openapi.json
+var adminFiles embed.FS
 
 func safeCNPJ(n string) string {
 	safe := strings.Map(func(r rune) rune {
@@ -56,10 +66,253 @@ func safeCNPJ(n string) string {
 }
 
 type api struct {
-	db    database
-	host  string
-	cache *cache
-	check *bloom.Filter
+	db           database
+	host         string
+	token        string
+	authRequired atomic.Bool
+	sessions     *adminSessionStore
+	jobs         *adminJobs
+	cache        *cache
+	check        *bloom.Filter
+}
+
+type adminStatus struct {
+	Healthy       bool   `json:"healthy"`
+	Companies     int64  `json:"companies"`
+	UpdatedAt     string `json:"updated_at"`
+	APIToken      string `json:"api_token"`
+	TokenRequired bool   `json:"token_required"`
+	DiskTotal     uint64 `json:"disk_total"`
+	DiskFree      uint64 `json:"disk_free"`
+}
+
+type regionalSearchResult struct {
+	Data   []string `json:"data"`
+	Cursor *string  `json:"cursor"`
+}
+
+type companySearchPage struct {
+	Data []struct {
+		CNPJ string `json:"cnpj"`
+	} `json:"data"`
+	Cursor *string `json:"cursor"`
+}
+
+var validStates = map[string]bool{
+	"AC": true, "AL": true, "AP": true, "AM": true, "BA": true, "CE": true, "DF": true,
+	"ES": true, "GO": true, "MA": true, "MT": true, "MS": true, "MG": true, "PA": true,
+	"PB": true, "PR": true, "PE": true, "PI": true, "RJ": true, "RN": true, "RS": true,
+	"RO": true, "RR": true, "SC": true, "SP": true, "SE": true, "TO": true,
+}
+
+func (app *api) regionalCNPJHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		app.messageResponse(w, http.StatusMethodNotAllowed, "Essa URL aceita apenas o método GET.")
+		return
+	}
+	values := r.URL.Query()
+	cnae := strings.TrimSpace(values.Get("cnae"))
+	state := strings.ToUpper(strings.TrimSpace(values.Get("estado")))
+	municipality := strings.TrimSpace(values.Get("municipio"))
+	if len(cnae) != 7 || !onlyDigits(cnae) {
+		app.messageResponse(w, http.StatusBadRequest, "O parâmetro cnae é obrigatório e deve conter 7 dígitos.")
+		return
+	}
+	if !validStates[state] {
+		app.messageResponse(w, http.StatusBadRequest, "O parâmetro estado é obrigatório e deve ser uma UF válida.")
+		return
+	}
+	if municipality == "" || len(municipality) > 100 {
+		app.messageResponse(w, http.StatusBadRequest, "O parâmetro municipio é obrigatório.")
+		return
+	}
+	if cursor := values.Get("cursor"); cursor != "" && !onlyDigits(cursor) {
+		app.messageResponse(w, http.StatusBadRequest, "O parâmetro cursor é inválido.")
+		return
+	}
+	if limit := values.Get("limit"); limit != "" {
+		n, err := strconv.Atoi(limit)
+		if err != nil || n < 1 || n > 1000 {
+			app.messageResponse(w, http.StatusBadRequest, "O parâmetro limit deve ser um número entre 1 e 1000.")
+			return
+		}
+	}
+	values.Set("uf", state)
+	values.Set("cnae", cnae)
+	if onlyDigits(municipality) {
+		values.Set("municipio", municipality)
+	} else {
+		values.Del("municipio")
+		values.Set("municipio_nome", municipality)
+	}
+	if values.Get("limit") == "" {
+		values.Set("limit", "100")
+	}
+	q := db.NewQuery(values)
+	if q == nil {
+		app.messageResponse(w, http.StatusBadRequest, "Parâmetros de busca inválidos.")
+		return
+	}
+	q.ActiveOnly = true
+	result, err := app.db.Search(r.Context(), q)
+	if err != nil {
+		slog.Error("regional CNPJ search error", "error", err)
+		app.messageResponse(w, http.StatusServiceUnavailable, "Não foi possível realizar a busca.")
+		return
+	}
+	var page companySearchPage
+	if err := json.Unmarshal(result, &page); err != nil {
+		slog.Error("could not decode regional CNPJ search", "error", err)
+		app.messageResponse(w, http.StatusInternalServerError, "Não foi possível processar o resultado da busca.")
+		return
+	}
+	response := regionalSearchResult{Data: make([]string, 0, len(page.Data)), Cursor: page.Cursor}
+	for _, company := range page.Data {
+		response.Data = append(response.Data, company.CNPJ)
+	}
+	b, err := json.Marshal(response)
+	if err != nil {
+		app.messageResponse(w, http.StatusInternalServerError, "Não foi possível processar o resultado da busca.")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(b)
+}
+
+func onlyDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func (app *api) adminAuthWrapper(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("minha_receita_admin")
+		if err != nil || !app.sessions.valid(cookie.Value) {
+			if r.URL.Path == "/admin/" {
+				http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+				return
+			}
+			app.messageResponse(w, http.StatusUnauthorized, "Sessão administrativa expirada.")
+			return
+		}
+		h(w, r)
+	}
+}
+
+func (app *api) apiTokenWrapper(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !app.authRequired.Load() {
+			h(w, r)
+			return
+		}
+		if r.Method == http.MethodOptions {
+			h(w, r)
+			return
+		}
+		provided := r.Header.Get("X-API-Key")
+		if authorization := r.Header.Get("Authorization"); strings.HasPrefix(authorization, "Bearer ") {
+			provided = strings.TrimSpace(strings.TrimPrefix(authorization, "Bearer "))
+		}
+		valid := app.token != "" && subtle.ConstantTimeCompare([]byte(provided), []byte(app.token)) == 1
+		if !valid {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			app.messageResponse(w, http.StatusUnauthorized, "Token de acesso ausente ou inválido.")
+			return
+		}
+		h(w, r)
+	}
+}
+
+func (app *api) adminHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/admin/" || r.Method != http.MethodGet {
+		http.NotFound(w, r)
+		return
+	}
+	b, err := adminFiles.ReadFile("admin.html")
+	if err != nil {
+		http.Error(w, "Não foi possível carregar o painel.", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(b)
+}
+
+func swaggerHandler(w http.ResponseWriter, r *http.Request) {
+	name := "swagger.html"
+	contentType := "text/html; charset=utf-8"
+	if r.URL.Path == "/docs/openapi.json" {
+		name, contentType = "openapi.json", "application/json"
+	} else if r.URL.Path != "/docs/" {
+		http.NotFound(w, r)
+		return
+	}
+	b, err := adminFiles.ReadFile(name)
+	if err != nil {
+		http.Error(w, "Não foi possível carregar a documentação.", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(b)
+}
+
+func (app *api) adminStatusHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	count, err := app.db.CompanyCount(r.Context())
+	if err != nil {
+		http.Error(w, "Não foi possível consultar o banco de dados.", http.StatusServiceUnavailable)
+		return
+	}
+	updated, _ := app.db.MetaRead("updated-at")
+	total, free, _ := diskStats("/mnt/data")
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	b, err := json.Marshal(adminStatus{Healthy: true, Companies: count, UpdatedAt: updated, APIToken: app.token, TokenRequired: app.authRequired.Load(), DiskTotal: total, DiskFree: free})
+	if err != nil {
+		slog.Error("could not encode admin status", "error", err)
+		return
+	}
+	_, _ = w.Write(b)
+}
+
+func (app *api) adminAuthModeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var request struct {
+		Required bool `json:"required"`
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil || json.Unmarshal(body, &request) != nil {
+		app.messageResponse(w, http.StatusBadRequest, "Configuração inválida.")
+		return
+	}
+	value := "free"
+	if request.Required {
+		value = "required"
+	}
+	if err := app.db.MetaSave("api-auth", value); err != nil {
+		slog.Error("could not persist API auth mode", "error", err)
+		app.messageResponse(w, http.StatusInternalServerError, "Não foi possível salvar a configuração.")
+		return
+	}
+	app.authRequired.Store(request.Required)
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = io.WriteString(w, fmt.Sprintf(`{"required":%t}`, request.Required))
 }
 
 // messageResponse takes a text message and a HTTP status, wraps the message into a
@@ -263,7 +516,16 @@ func Serve(db database, p string, cacheSize, bloomSize int) error {
 	if err != nil {
 		return fmt.Errorf("api could not initialize cache: %w", err)
 	}
-	app := api{db: db, host: os.Getenv("ALLOWED_HOST"), cache: c}
+	app := api{db: db, host: os.Getenv("ALLOWED_HOST"), token: os.Getenv("API_TOKEN"), cache: c, sessions: newAdminSessionStore(), jobs: &adminJobs{}}
+	required := true
+	if configured, err := db.MetaRead("api-auth"); err == nil {
+		required = configured != "free"
+	} else if value := os.Getenv("API_AUTH_REQUIRED"); value != "" {
+		if parsed, parseErr := strconv.ParseBool(value); parseErr == nil {
+			required = parsed
+		}
+	}
+	app.authRequired.Store(required)
 
 	if bloomSize > 0 {
 		app.check = bloom.New(db, bloomSize)
@@ -279,6 +541,19 @@ func Serve(db database, p string, cacheSize, bloomSize int) error {
 		}()
 	}
 
+	http.HandleFunc("/admin/login", app.allowedHostWrapper(app.adminLoginHandler))
+	http.HandleFunc("/docs/", app.allowedHostWrapper(swaggerHandler))
+	http.HandleFunc("/admin/", app.allowedHostWrapper(app.adminAuthWrapper(app.adminHandler)))
+	http.HandleFunc("/admin/logout", app.allowedHostWrapper(app.adminAuthWrapper(app.adminLogoutHandler)))
+	http.HandleFunc("/admin/api/status", app.allowedHostWrapper(app.adminAuthWrapper(app.adminStatusHandler)))
+	http.HandleFunc("/admin/api/auth", app.allowedHostWrapper(app.adminAuthWrapper(app.adminAuthModeHandler)))
+	http.HandleFunc("/admin/api/jobs", app.allowedHostWrapper(app.adminAuthWrapper(app.adminJobsHandler)))
+	http.HandleFunc("/admin/api/jobs/download", app.allowedHostWrapper(app.adminAuthWrapper(app.adminDownloadHandler)))
+	http.HandleFunc("/admin/api/jobs/transform", app.allowedHostWrapper(app.adminAuthWrapper(app.adminTransformHandler)))
+	http.HandleFunc("/admin/api/jobs/cancel", app.allowedHostWrapper(app.adminAuthWrapper(app.adminCancelJobHandler)))
+	http.HandleFunc("/admin/api/restart", app.allowedHostWrapper(app.adminAuthWrapper(app.adminRestartHandler)))
+	http.HandleFunc("/cnae", app.allowedHostWrapper(app.apiTokenWrapper(app.regionalCNPJHandler)))
+
 	for _, r := range []struct {
 		path    string
 		handler func(http.ResponseWriter, *http.Request)
@@ -288,7 +563,7 @@ func Serve(db database, p string, cacheSize, bloomSize int) error {
 		{"/healthz", app.healthHandler},
 		{"/metrics", promhttp.Handler().ServeHTTP},
 	} {
-		http.HandleFunc(r.path, app.allowedHostWrapper(r.handler))
+		http.HandleFunc(r.path, app.allowedHostWrapper(app.apiTokenWrapper(r.handler)))
 	}
 
 	s := &http.Server{
