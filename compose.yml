@@ -26,6 +26,23 @@ services:
       timeout: 5s
       retries: 5
 
+  pgadmin:
+    image: dpage/pgadmin4:9.16
+    restart: unless-stopped
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@minhareceita.org}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin-local}
+      PGADMIN_DISABLE_POSTFIX: "true"
+      PGADMIN_REPLACE_SERVERS_ON_STARTUP: "true"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./config/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres_test:
     image: postgres:18-trixie
     ports:
@@ -72,3 +89,6 @@ services:
         chown root:root /root/.ssh/authorized_keys &&
         chmod 600 /root/.ssh/authorized_keys &&
         /usr/sbin/sshd -D
+
+volumes:
+  pgadmin_data:

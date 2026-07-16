@@ -20,6 +20,37 @@ var taxRegimeFiles = []string{
 	"entidades-lucro-real.zip",
 }
 
+var cnpjFiles = func() []string {
+	files := []string{
+		"Cnaes.zip",
+		"Motivos.zip",
+		"Municipios.zip",
+		"Naturezas.zip",
+		"Paises.zip",
+		"Qualificacoes.zip",
+		"Simples.zip",
+	}
+	for _, prefix := range []string{"Empresas", "Estabelecimentos", "Socios"} {
+		for i := range 10 {
+			files = append(files, fmt.Sprintf("%s%d.zip", prefix, i))
+		}
+	}
+	return files
+}()
+
+func listWithFallback(c *webdav, dir string, names []string) ([]entry, error) {
+	ls, err := c.list(dir)
+	if err == nil {
+		return ls, nil
+	}
+	slog.Warn("WebDAV listing failed; checking known files individually", "directory", dir, "error", err)
+	ls, fallbackErr := c.listFilesByName(dir, names)
+	if fallbackErr != nil {
+		return nil, fmt.Errorf("WebDAV listing failed (%v) and file discovery fallback failed: %w", err, fallbackErr)
+	}
+	return ls, nil
+}
+
 func validateYearMonth(ym string) error {
 	if _, err := time.Parse("2006-01", ym); err != nil {
 		if _, err := time.Parse("200601", ym); err != nil {
@@ -40,8 +71,81 @@ func isZipFile(e entry) bool {
 	return e.Collection == nil && strings.EqualFold(filepath.Ext(e.DisplayName), ".zip")
 }
 
+const downloadAttempts = 5
+
+func downloadEntry(c *webdav, dir, remoteDir string, e entry, bar *progressbar.ProgressBar) error {
+	name := e.DisplayName
+	localPath := filepath.Join(dir, name)
+	remotePath := strings.TrimPrefix(remoteDir+"/"+name, "/")
+
+	var initialSize int64
+	if info, err := os.Stat(localPath); err == nil {
+		switch {
+		case e.ContentLength > 0 && info.Size() == e.ContentLength:
+			if err := bar.Add(int(info.Size())); err != nil {
+				return fmt.Errorf("could not update progress for %s: %w", name, err)
+			}
+			slog.Info("File already downloaded; skipping", "file", name)
+			return nil
+		case e.ContentLength > 0 && info.Size() < e.ContentLength:
+			initialSize = info.Size()
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("could not inspect %s: %w", localPath, err)
+	}
+	if initialSize > 0 {
+		if err := bar.Add(int(initialSize)); err != nil {
+			return fmt.Errorf("could not update progress for %s: %w", name, err)
+		}
+		slog.Info("Resuming partial download", "file", name, "offset", initialSize, "size", e.ContentLength)
+	}
+
+	var lastErr error
+	for attempt := range downloadAttempts {
+		offset := int64(0)
+		if info, err := os.Stat(localPath); err == nil && e.ContentLength > 0 && info.Size() < e.ContentLength {
+			offset = info.Size()
+		} else if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("could not inspect %s: %w", localPath, err)
+		}
+
+		flags := os.O_CREATE | os.O_WRONLY
+		if offset > 0 {
+			flags |= os.O_APPEND
+		} else {
+			flags |= os.O_TRUNC
+		}
+		f, err := os.OpenFile(localPath, flags, 0o644)
+		if err != nil {
+			return fmt.Errorf("could not open %s: %w", localPath, err)
+		}
+		_, downloadErr := c.downloadFrom(remotePath, offset, io.MultiWriter(f, bar))
+		closeErr := f.Close()
+		if downloadErr == nil && closeErr != nil {
+			downloadErr = fmt.Errorf("could not close %s: %w", localPath, closeErr)
+		}
+		if downloadErr == nil && e.ContentLength > 0 {
+			info, statErr := os.Stat(localPath)
+			if statErr != nil {
+				downloadErr = fmt.Errorf("could not verify %s: %w", localPath, statErr)
+			} else if info.Size() != e.ContentLength {
+				downloadErr = fmt.Errorf("incomplete file: got %d bytes, expected %d", info.Size(), e.ContentLength)
+			}
+		}
+		if downloadErr == nil {
+			return nil
+		}
+		lastErr = downloadErr
+		if attempt+1 < downloadAttempts {
+			slog.Warn("Download interrupted; retrying", "file", name, "attempt", attempt+1, "error", downloadErr)
+			time.Sleep(time.Duration(attempt+1) * time.Second)
+		}
+	}
+	return fmt.Errorf("could not download %s after %d attempts: %w", name, downloadAttempts, lastErr)
+}
+
 func downloadFederalRevenue(c *webdav, ym, dir string) error {
-	ls, err := c.list(ym)
+	ls, err := listWithFallback(c, ym, cnpjFiles)
 	if err != nil {
 		return fmt.Errorf("could not list files for %s: %w", ym, err)
 	}
@@ -74,31 +178,14 @@ func downloadFederalRevenue(c *webdav, ym, dir string) error {
 	var g errgroup.Group
 	for _, e := range zs {
 		g.Go(func() error {
-			n := e.DisplayName
-			pth := filepath.Join(dir, n)
-
-			f, err := os.Create(pth)
-			if err != nil {
-				return fmt.Errorf("could not create %s: %w", pth, err)
-			}
-			defer func() {
-				if err := f.Close(); err != nil {
-					slog.Warn("could not close file", "file", n, "error", err)
-				}
-			}()
-			_, err = c.download(ym+"/"+n, io.MultiWriter(f, bar))
-			if err != nil {
-				return fmt.Errorf("could not download %s: %w", n, err)
-			}
-
-			return nil
+			return downloadEntry(c, dir, ym, e, bar)
 		})
 	}
 	return g.Wait()
 }
 
 func downloadTaxRegime(c *webdav, dir string) error {
-	ls, err := c.list("")
+	ls, err := listWithFallback(c, "", taxRegimeFiles)
 	if err != nil {
 		return fmt.Errorf("could not list tax regime files: %w", err)
 	}
@@ -135,23 +222,7 @@ func downloadTaxRegime(c *webdav, dir string) error {
 	var g errgroup.Group
 	for _, n := range todo {
 		g.Go(func() error {
-			pth := filepath.Join(dir, n)
-
-			f, err := os.Create(pth)
-			if err != nil {
-				return fmt.Errorf("could not create %s: %w", pth, err)
-			}
-			defer func() {
-				if err := f.Close(); err != nil {
-					slog.Warn("could not close file", "file", n, "error", err)
-				}
-			}()
-			_, err = c.download(n, io.MultiWriter(f, bar))
-			if err != nil {
-				return fmt.Errorf("could not download %s: %w", n, err)
-			}
-
-			return nil
+			return downloadEntry(c, dir, "", entry{DisplayName: n, ContentLength: sz[n]}, bar)
 		})
 	}
 	return g.Wait()

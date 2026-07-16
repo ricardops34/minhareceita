@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"strings"
 )
 
@@ -89,10 +90,50 @@ func (c *webdav) list(dir string) ([]entry, error) {
 	return ms.Responses, nil
 }
 
+// listFilesByName is a fallback for servers that block WebDAV PROPFIND
+// requests but still allow HEAD and GET requests for individual files.
+func (c *webdav) listFilesByName(dir string, names []string) ([]entry, error) {
+	entries := make([]entry, 0, len(names))
+	for _, name := range names {
+		filePath := path.Join(dir, name)
+		r, err := c.req(http.MethodHead, filePath, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.client.Do(r)
+		if err != nil {
+			return nil, fmt.Errorf("error checking %s: %w", filePath, err)
+		}
+		if err := resp.Body.Close(); err != nil {
+			return nil, fmt.Errorf("error closing response for %s: %w", filePath, err)
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			entries = append(entries, entry{
+				DisplayName:   name,
+				ContentLength: resp.ContentLength,
+				LastModified:  resp.Header.Get("Last-Modified"),
+			})
+		case http.StatusNotFound:
+			continue
+		default:
+			return nil, fmt.Errorf("checking %s returned %s", filePath, resp.Status)
+		}
+	}
+	return entries, nil
+}
+
 func (c *webdav) download(path string, w io.Writer) (int64, error) {
+	return c.downloadFrom(path, 0, w)
+}
+
+func (c *webdav) downloadFrom(path string, offset int64, w io.Writer) (int64, error) {
 	r, err := c.req("GET", path, nil)
 	if err != nil {
 		return 0, err
+	}
+	if offset > 0 {
+		r.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}
 	resp, err := c.client.Do(r)
 	if err != nil {
@@ -103,7 +144,11 @@ func (c *webdav) download(path string, w io.Writer) (int64, error) {
 			return
 		}
 	}()
-	if resp.StatusCode != http.StatusOK {
+	expectedStatus := http.StatusOK
+	if offset > 0 {
+		expectedStatus = http.StatusPartialContent
+	}
+	if resp.StatusCode != expectedStatus {
 		return 0, fmt.Errorf("download of %s returned %s", path, resp.Status)
 	}
 	n, err := io.Copy(w, resp.Body)

@@ -1,16 +1,26 @@
 package download
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/schollz/progressbar/v3"
 )
 
 func fileServer(t *testing.T, propfind string, files map[string]string) *httptest.Server {
+	for filePath, content := range files {
+		name := filepath.Base(filePath)
+		pattern := regexp.MustCompile(`(?s)(<d:displayname>` + regexp.QuoteMeta(name) + `</d:displayname>.*?<d:getcontentlength>)\d+(</d:getcontentlength>)`)
+		propfind = pattern.ReplaceAllString(propfind, "${1}"+strconv.Itoa(len(content))+"${2}")
+	}
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, _, ok := r.BasicAuth()
 		if !ok {
@@ -33,13 +43,47 @@ func fileServer(t *testing.T, propfind string, files map[string]string) *httptes
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
-			if _, err := io.WriteString(w, content); err != nil {
+			start := 0
+			if rangeHeader := r.Header.Get("Range"); rangeHeader != "" {
+				if _, err := fmt.Sscanf(rangeHeader, "bytes=%d-", &start); err != nil {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, len(content)-1, len(content)))
+				w.WriteHeader(http.StatusPartialContent)
+			}
+			if _, err := io.WriteString(w, content[start:]); err != nil {
 				t.Errorf("could not write response: %v", err)
 			}
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	}))
+}
+
+func TestDownloadEntryResumesPartialFile(t *testing.T) {
+	t.Parallel()
+	content := "complete-download"
+	srv := fileServer(t, "", map[string]string{"2026-01/Cnaes.zip": content})
+	defer srv.Close()
+	c := &webdav{base: srv.URL + "/public.php/webdav/", token: "test-token", client: srv.Client()}
+	dir := t.TempDir()
+	partial := content[:8]
+	if err := os.WriteFile(filepath.Join(dir, "Cnaes.zip"), []byte(partial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bar := progressbar.NewOptions(len(content), progressbar.OptionSetWriter(io.Discard))
+	e := entry{DisplayName: "Cnaes.zip", ContentLength: int64(len(content))}
+	if err := downloadEntry(c, dir, "2026-01", e, bar); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "Cnaes.zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != content {
+		t.Fatalf("expected %q, got %q", content, string(got))
+	}
 }
 
 func TestValidateYearMonth(t *testing.T) {

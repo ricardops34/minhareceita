@@ -94,6 +94,64 @@ func TestListError(t *testing.T) {
 	}
 }
 
+func TestListFilesByName(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path != "/2026-01/Cnaes.zip" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Length", "22078")
+		w.Header().Set("Last-Modified", "Sun, 10 May 2026 19:23:10 GMT")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	c := &webdav{base: srv.URL + "/", token: "test-token", client: srv.Client()}
+	entries, err := c.listFilesByName("2026-01", []string{"Cnaes.zip", "missing.zip"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].DisplayName != "Cnaes.zip" || entries[0].ContentLength != 22078 {
+		t.Errorf("unexpected entry: %+v", entries[0])
+	}
+}
+
+func TestListWithFallback(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "PROPFIND":
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusOK)
+		case http.MethodHead:
+			if r.URL.Path != "/2026-01/Cnaes.zip" {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Length", "22078")
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer srv.Close()
+	c := &webdav{base: srv.URL + "/", token: "test-token", client: srv.Client()}
+	entries, err := listWithFallback(c, "2026-01", []string{"Cnaes.zip", "missing.zip"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(entries) != 1 || entries[0].DisplayName != "Cnaes.zip" {
+		t.Fatalf("unexpected entries: %+v", entries)
+	}
+}
+
 func TestDownloadError(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
